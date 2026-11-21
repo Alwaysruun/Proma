@@ -360,6 +360,7 @@ import {
   removeWorktreeRepo,
   cleanupStaleWorkspaceAttachedPaths,
 } from './lib/agent-workspace-manager'
+import { createPluginTemplate, getInstalledPlugin, installPluginFromFolder, installPluginFromZip, listPlugins, uninstallPlugin } from './lib/plugin-manager'
 import { movePathSafely } from './lib/file-move-service'
 import { subscribeWorkspaceMemoryChanges } from './lib/workspace-memory-change-watcher'
 import { confirmWorkspaceMemoryWindowClose, markWorkspaceMemoryWindowReady } from './lib/workspace-memory-window'
@@ -3413,6 +3414,72 @@ export function registerIpcHandlers(): void {
     AGENT_IPC_CHANNELS.RENAME_SKILL_ENTRY,
     async (_, workspaceSlug: string, skillSlug: string, fromRelative: string, toRelative: string): Promise<void> => {
       renameSkillEntry(workspaceSlug, skillSlug, fromRelative, toRelative)
+    }
+  )
+  // ===== Proma 插件 =====
+
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.LIST_PLUGINS,
+    async (_, workspaceSlug: string) => {
+      return listPlugins(workspaceSlug)
+    }
+  )
+
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.INSTALL_PLUGIN_FROM_FOLDER,
+    async (_, workspaceSlug: string, options?: import('@proma/shared').PluginInstallOptions) => {
+      const win = BrowserWindow.getFocusedWindow()
+      const result = win
+        ? await dialog.showOpenDialog(win, { title: '选择 Proma 插件文件夹', properties: ['openDirectory'] })
+        : await dialog.showOpenDialog({ title: '选择 Proma 插件文件夹', properties: ['openDirectory'] })
+      if (result.canceled || !result.filePaths[0]) return { canceled: true as const }
+      return { canceled: false as const, result: installPluginFromFolder(workspaceSlug, result.filePaths[0], options) }
+    }
+  )
+
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.INSTALL_PLUGIN_FROM_ZIP,
+    async (_, workspaceSlug: string, options?: import('@proma/shared').PluginInstallOptions) => {
+      const win = BrowserWindow.getFocusedWindow()
+      const dialogOptions = {
+        title: '选择 Proma 插件压缩包',
+        properties: ['openFile' as const],
+        filters: [
+          { name: 'Proma 插件', extensions: ['zip', 'proma-plugin'] },
+          { name: '所有文件', extensions: ['*'] },
+        ],
+      }
+      const result = win
+        ? await dialog.showOpenDialog(win, dialogOptions)
+        : await dialog.showOpenDialog(dialogOptions)
+      if (result.canceled || !result.filePaths[0]) return { canceled: true as const }
+      return { canceled: false as const, result: installPluginFromZip(workspaceSlug, result.filePaths[0], options) }
+    }
+  )
+
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.UNINSTALL_PLUGIN,
+    async (_, workspaceSlug: string, pluginId: string) => {
+      return uninstallPlugin(workspaceSlug, pluginId)
+    }
+  )
+
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.OPEN_PLUGIN_FOLDER,
+    async (_, workspaceSlug: string, pluginId: string): Promise<void> => {
+      const plugin = getInstalledPlugin(workspaceSlug, pluginId)
+      const error = await shell.openPath(plugin.directory)
+      if (error) throw new Error('无法打开插件目录: ' + error)
+    }
+  )
+
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.CREATE_PLUGIN_TEMPLATE,
+    async (): Promise<string> => {
+      const directory = createPluginTemplate()
+      const error = await shell.openPath(directory)
+      if (error) throw new Error('无法打开插件模板目录: ' + error)
+      return directory
     }
   )
 

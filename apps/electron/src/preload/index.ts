@@ -63,6 +63,10 @@ import type {
   OtherWorkspaceSkillsGroup,
   WorkspaceCapabilities,
   WorkspaceMemorySummary,
+  InstalledPromaPlugin,
+  PluginInstallActionResult,
+  PluginInstallOptions,
+  PluginUninstallResult,
   FileEntry,
   FileSearchResult,
   EnvironmentCheckResult,
@@ -744,6 +748,25 @@ export interface ElectronAPI {
 
   /** 删除工作区 Skill */
   deleteWorkspaceSkill: (workspaceSlug: string, skillSlug: string) => Promise<void>
+  // ===== Proma 插件 =====
+
+  /** 列出当前工作区已安装的 Proma 插件 */
+  listWorkspacePlugins: (workspaceSlug: string) => Promise<InstalledPromaPlugin[]>
+
+  /** 打开文件夹选择器并安装 Proma 插件 */
+  installPluginFromFolder: (workspaceSlug: string, options?: PluginInstallOptions) => Promise<PluginInstallActionResult>
+
+  /** 打开压缩包选择器并安装 Proma 插件 */
+  installPluginFromZip: (workspaceSlug: string, options?: PluginInstallOptions) => Promise<PluginInstallActionResult>
+
+  /** 卸载 Proma 插件 */
+  uninstallPlugin: (workspaceSlug: string, pluginId: string) => Promise<PluginUninstallResult>
+
+  /** 打开插件目录 */
+  openPluginFolder: (workspaceSlug: string, pluginId: string) => Promise<void>
+
+  /** 创建插件模板并打开目录 */
+  createPluginTemplate: () => Promise<string>
 
   /** 切换工作区 Skill 启用/禁用 */
   toggleWorkspaceSkill: (workspaceSlug: string, skillSlug: string, enabled: boolean) => Promise<void>
@@ -2112,6 +2135,29 @@ const electronAPI: ElectronAPI = {
 
   deleteWorkspaceSkill: (workspaceSlug: string, skillSlug: string) => {
     return ipcRenderer.invoke(AGENT_IPC_CHANNELS.DELETE_SKILL, workspaceSlug, skillSlug)
+  },
+  listWorkspacePlugins: (workspaceSlug: string) => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.LIST_PLUGINS, workspaceSlug) as Promise<InstalledPromaPlugin[]>
+  },
+
+  installPluginFromFolder: (workspaceSlug: string, options?: PluginInstallOptions) => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.INSTALL_PLUGIN_FROM_FOLDER, workspaceSlug, options) as Promise<PluginInstallActionResult>
+  },
+
+  installPluginFromZip: (workspaceSlug: string, options?: PluginInstallOptions) => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.INSTALL_PLUGIN_FROM_ZIP, workspaceSlug, options) as Promise<PluginInstallActionResult>
+  },
+
+  uninstallPlugin: (workspaceSlug: string, pluginId: string) => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.UNINSTALL_PLUGIN, workspaceSlug, pluginId) as Promise<PluginUninstallResult>
+  },
+
+  openPluginFolder: (workspaceSlug: string, pluginId: string) => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.OPEN_PLUGIN_FOLDER, workspaceSlug, pluginId) as Promise<void>
+  },
+
+  createPluginTemplate: () => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.CREATE_PLUGIN_TEMPLATE) as Promise<string>
   },
 
   toggleWorkspaceSkill: (workspaceSlug: string, skillSlug: string, enabled: boolean) => {

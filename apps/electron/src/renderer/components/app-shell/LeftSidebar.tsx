@@ -11,7 +11,7 @@
 import * as React from 'react'
 import { useAtom, useSetAtom, useAtomValue, useStore } from 'jotai'
 import { toast } from 'sonner'
-import { Pin, PinOff, Star, Settings, Plus, CirclePlus, Trash2, Pencil, PanelLeft, PanelRight, ArrowRightLeft, Search, Archive, ArchiveRestore, ArrowLeft, Bot, MessageSquare, MoreHorizontal, FolderOpen, FolderInput, FolderPlus, Clock, CalendarDays, ChevronRight, ChevronDown, ChevronUp, ChevronsDownUp, Blocks, Brain, ListTodo, GitBranch, Download, Loader2, RotateCw, Info } from 'lucide-react'
+import { Pin, PinOff, Star, Settings, Plus, CirclePlus, Trash2, Pencil, PanelLeft, PanelRight, ArrowRightLeft, Search, Archive, ArchiveRestore, ArrowLeft, Bot, MessageSquare, MoreHorizontal, FolderOpen, FolderInput, FolderPlus, Clock, CalendarDays, ChevronRight, ChevronDown, ChevronUp, ChevronsDownUp, Blocks, Brain, ListTodo, GitBranch, Download, Loader2, RotateCw, Info, Puzzle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import { ModeSwitcher } from './ModeSwitcher'
@@ -1045,6 +1045,7 @@ export function LeftSidebar({ width, noTransition }: LeftSidebarProps): React.Re
     openWorkspaceComponent(component)
   }, [currentAgentSessionId, mode, openWorkspaceComponent, setActiveView, setAgentSkillsTab])
 
+
   /** MCP/Skills 为同一低频管理入口；在右侧工作区中一次展开两个独立 Tab，保留 Skills 为当前焦点。 */
   const handleOpenMcpSkillsComponents = React.useCallback((): void => {
     if (mode !== 'agent' || !currentAgentSessionId) {
@@ -1055,6 +1056,16 @@ export function LeftSidebar({ width, noTransition }: LeftSidebarProps): React.Re
     setActiveView('conversations')
     openWorkspaceComponent('mcp')
     openWorkspaceComponent('skills')
+  }, [currentAgentSessionId, mode, openWorkspaceComponent, setActiveView, setAgentSkillsTab])
+  /** 插件为独立入口，复用 Agent 技能右侧组件与全屏视图。 */
+  const handleOpenPluginsComponent = React.useCallback((): void => {
+    if (mode !== 'agent' || !currentAgentSessionId) {
+      setAgentSkillsTab('plugins')
+      setActiveView('agent-skills')
+      return
+    }
+    setActiveView('conversations')
+    openWorkspaceComponent('plugins')
   }, [currentAgentSessionId, mode, openWorkspaceComponent, setActiveView, setAgentSkillsTab])
 
   // 切换模式时重置归档视图
@@ -3189,6 +3200,11 @@ export function LeftSidebar({ width, noTransition }: LeftSidebarProps): React.Re
         active: isWorkspaceComponentActive("skills") || isWorkspaceComponentActive("mcp"),
         showUpdate: (capabilities?.skills.filter((skill) => skill.hasUpdate).length ?? 0) > 0,
         onClick: handleOpenMcpSkillsComponents,
+      }, {
+        label: "插件",
+        icon: <Puzzle size={16} />,
+        active: isWorkspaceComponentActive("plugins"),
+        onClick: handleOpenPluginsComponent,
       }] : []),
     ];
 
@@ -3576,6 +3592,7 @@ export function LeftSidebar({ width, noTransition }: LeftSidebarProps): React.Re
           ) : undefined}
         />
         {mode === 'agent' && (
+          <>
           <WorkspaceComponentSidebarEntry
             label="MCP/Skills"
             icon={<Blocks size={16} />}
@@ -3583,6 +3600,13 @@ export function LeftSidebar({ width, noTransition }: LeftSidebarProps): React.Re
             onClick={handleOpenMcpSkillsComponents}
             badge={(capabilities?.skills.filter((skill) => skill.hasUpdate).length ?? 0) > 0 ? <span className="size-2.5 rounded-full bg-blue-500" /> : undefined}
           />
+          <WorkspaceComponentSidebarEntry
+            label="插件"
+            icon={<Puzzle size={16} />}
+            active={isWorkspaceComponentActive('plugins')}
+            onClick={handleOpenPluginsComponent}
+          />
+          </>
         )}
       </div>
 

@@ -1274,6 +1274,75 @@ export interface WorkspaceCapabilities {
 /**
  * Agent 发送消息的输入参数
  */
+// ===== Proma 插件 =====
+
+/** Proma 插件清单（proma-plugin.json） */
+export interface PromaPluginManifest {
+  id: string
+  name: string
+  version: string
+  description?: string
+  author?: string
+  homepage?: string
+  /** 相对于插件根目录的 Skill 目录；省略时读取 skills/ 下的所有 Skill */
+  skills?: string[]
+  /** 插件声明的 MCP 服务器；也支持根目录 mcp.json */
+  mcpServers?: Record<string, PromaPluginMcpServer>
+}
+
+/** 插件清单中的 MCP 服务器定义，安装时会规范化为 McpServerEntry */
+export interface PromaPluginMcpServer {
+  type?: McpTransportTypeInput
+  command?: string
+  args?: string[]
+  env?: Record<string, string>
+  url?: string
+  headers?: Record<string, string>
+  timeout?: number
+  enabled?: boolean
+  oauth?: McpOAuthConfiguration
+}
+
+/** 当前工作区中已安装的 Proma 插件记录 */
+export interface InstalledPromaPlugin {
+  id: string
+  name: string
+  version: string
+  description?: string
+  author?: string
+  homepage?: string
+  installedAt: string
+  /** 安装来源（文件夹或压缩包） */
+  source: string
+  /** 安装到 Proma 配置目录 plugins 下的插件目录 */
+  directory: string
+  skills: string[]
+  mcpServers: string[]
+  skillFingerprints: Record<string, string>
+  mcpServerFingerprints: Record<string, string>
+}
+
+export interface PluginInstallOptions {
+  /** 允许覆盖同名 Skill、MCP 或已安装版本 */
+  overwrite?: boolean
+}
+
+export interface PluginInstallResult {
+  plugin: InstalledPromaPlugin
+  installedSkills: string[]
+  installedMcpServers: string[]
+}
+
+export interface PluginUninstallResult {
+  removedSkills: string[]
+  keptSkills: string[]
+  removedMcpServers: string[]
+  keptMcpServers: string[]
+}
+
+export type PluginInstallActionResult =
+  | { canceled: true }
+  | { canceled: false; result: PluginInstallResult }
 export interface AgentSendInput {
   /** 会话 ID */
   sessionId: string
@@ -1954,7 +2023,18 @@ export const AGENT_IPC_CHANNELS = {
   /** 删除 Skill 目录下的文件或目录 */
   DELETE_SKILL_ENTRY: 'agent:delete-skill-entry',
   /** 重命名/移动 Skill 目录下的文件或目录 */
-  RENAME_SKILL_ENTRY: 'agent:rename-skill-entry',
+  RENAME_SKILL_ENTRY: 'agent:rename-skill-entry',  /** 列出当前工作区已安装的 Proma 插件 */
+  LIST_PLUGINS: 'agent:list-plugins',
+  /** 从文件夹安装 Proma 插件 */
+  INSTALL_PLUGIN_FROM_FOLDER: 'agent:install-plugin-from-folder',
+  /** 从 zip 压缩包安装 Proma 插件 */
+  INSTALL_PLUGIN_FROM_ZIP: 'agent:install-plugin-from-zip',
+  /** 卸载当前工作区中的 Proma 插件 */
+  UNINSTALL_PLUGIN: 'agent:uninstall-plugin',
+  /** 打开插件目录 */
+  OPEN_PLUGIN_FOLDER: 'agent:open-plugin-folder',
+  /** 创建插件模板并返回目录 */
+  CREATE_PLUGIN_TEMPLATE: 'agent:create-plugin-template',
   /** 获取工作区记忆摘要 */
   GET_WORKSPACE_MEMORY_SUMMARY: 'agent:get-workspace-memory-summary',
   /** 读取工作区 AGENTS.md */

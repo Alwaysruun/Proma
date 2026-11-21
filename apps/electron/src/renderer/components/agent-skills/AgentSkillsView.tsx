@@ -12,7 +12,7 @@
 import * as React from 'react'
 import { useAtom, useAtomValue, useSetAtom, useStore } from 'jotai'
 import { toast } from 'sonner'
-import { Blocks, ChevronDown, ChevronRight, Search, Plus, Store, FolderOpen, Check, Sparkles, Loader2 } from 'lucide-react'
+import { Blocks, Puzzle, ChevronDown, ChevronRight, Search, Plus, Store, FolderOpen, Check, Sparkles, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import {
@@ -37,6 +37,7 @@ import { SkillDetailView } from './SkillDetailView'
 import { McpDetailView } from './McpDetailView'
 import { ImportSkillDialog } from './ImportSkillDialog'
 import { WorkspaceMemoryTab } from './WorkspaceMemoryTab'
+import { PluginsTab } from './PluginsTab'
 import { groupSkills } from './skillGrouping'
 import { EMBEDDED_CATALOG_TWO_COLUMN_MIN_WIDTH, IntegrationCatalog } from './IntegrationCatalog'
 import { CredentialDialog } from './CredentialDialog'
@@ -104,7 +105,7 @@ export function AgentSkillsView({
   componentTab,
   workspaceId,
   sessionId,
-}: { embedded?: boolean; componentTab?: 'skills' | 'mcp'; workspaceId?: string; sessionId?: string } = {}): React.ReactElement {
+}: { embedded?: boolean; componentTab?: 'skills' | 'mcp' | 'plugins'; workspaceId?: string; sessionId?: string } = {}): React.ReactElement {
   const data = useAgentSkillsData(workspaceId)
   const bumpCapabilities = useSetAtom(workspaceCapabilitiesVersionAtom)
   const store = useStore()
@@ -581,8 +582,8 @@ export function AgentSkillsView({
           pt-14 让按钮整体位于全局 drag 层（0–50px, z-50）下方，避免被吃掉点击。 */}
       <div className={cn('titlebar-no-drag mx-auto flex w-full max-w-6xl shrink-0 items-center justify-between', embedded ? 'px-4 py-3' : 'px-8 pt-14 pb-4')}>
         <div className="flex items-center gap-2.5">
-          <Blocks className="size-6 text-foreground/70" />
-          <h1 className={cn('font-semibold text-foreground', embedded ? 'text-lg' : 'text-2xl')}>{embedded ? (tab === 'mcp' ? 'MCP' : 'Skills') : 'Agent 技能'}</h1>
+          {tab === 'plugins' ? <Puzzle className="size-6 text-foreground/70" /> : <Blocks className="size-6 text-foreground/70" />}
+          <h1 className={cn('font-semibold text-foreground', embedded ? 'text-lg' : 'text-2xl')}>{embedded ? (tab === 'mcp' ? 'MCP' : tab === 'plugins' ? '插件' : tab === 'memory' ? '记忆' : 'Skills') : 'Agent 技能'}</h1>
         </div>
 
         {!embedded && <Popover open={wsPopoverOpen} onOpenChange={setWsPopoverOpen}>
@@ -633,7 +634,7 @@ export function AgentSkillsView({
 
       {embedded && (
         <div className="titlebar-no-drag mx-auto w-full max-w-6xl shrink-0 px-3 pb-3">
-          <AgentActionHint action={tab === 'skills' ? '创建、整理、更新或删除 Skills' : '查找、配置或移除 MCP'} />
+          <AgentActionHint action={tab === 'skills' ? '创建、整理、更新或删除 Skills' : tab === 'mcp' ? '查找、配置或移除 MCP' : tab === 'plugins' ? '安装、查看或卸载自定义插件' : '查看项目长期记忆'} />
         </div>
       )}
 
@@ -643,27 +644,28 @@ export function AgentSkillsView({
         {!embedded && <div className="relative flex h-8 items-stretch rounded-xl bg-muted p-0.5">
           <div
             className={cn(
-              'absolute bottom-0.5 top-0.5 w-[calc(33.333%-3px)] rounded-lg bg-background shadow-sm transition-transform duration-300 ease-in-out',
+              'absolute bottom-0.5 top-0.5 w-[calc(25%-3px)] rounded-lg bg-background shadow-sm transition-transform duration-300 ease-in-out',
               tab === 'skills' && 'translate-x-0',
               tab === 'mcp' && 'translate-x-full',
-              tab === 'memory' && 'translate-x-[200%]',
+              tab === 'plugins' && 'translate-x-[200%]', tab === 'memory' && 'translate-x-[300%]',
             )}
           />
           {([
             { value: 'skills' as const, label: 'Skills', count: data.skills.length },
             { value: 'mcp' as const, label: 'MCP', count: mcpCount },
+            { value: 'plugins' as const, label: '插件', count: null },
             { value: 'memory' as const, label: '记忆', count: memoryCount },
           ]).map(({ value, label, count }) => (
             <button
               key={value}
               onClick={() => setTab(value)}
               className={cn(
-                'relative z-[1] flex min-w-[96px] items-center justify-center gap-1.5 rounded-lg px-4 text-sm font-medium transition-colors duration-200',
+                'relative z-[1] flex min-w-[80px] items-center justify-center gap-1.5 rounded-lg px-3 text-sm font-medium transition-colors duration-200',
                 tab === value ? 'text-foreground' : 'text-muted-foreground hover:text-foreground',
               )}
             >
               {label}
-              <span className="text-[11px] tabular-nums text-muted-foreground">{count}</span>
+              {count != null && <span className="text-[11px] tabular-nums text-muted-foreground">{count}</span>}
             </button>
           ))}
         </div>}
@@ -674,7 +676,7 @@ export function AgentSkillsView({
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder={tab === 'skills' ? '搜索 Skills...' : tab === 'mcp' ? '搜索 MCP 服务器...' : '搜索记忆文件...'}
+            placeholder={tab === 'skills' ? '搜索 Skills...' : tab === 'mcp' ? '搜索 MCP 服务器...' : tab === 'plugins' ? '搜索插件...' : '搜索记忆文件...'}
             className="w-full bg-transparent text-[13px] text-foreground placeholder:text-foreground/35 focus:outline-none"
           />
         </div>
@@ -741,7 +743,7 @@ export function AgentSkillsView({
       {/* 内容 */}
       <div className="min-h-0 flex-1 overflow-y-auto scrollbar-thin">
         <div className={cn('mx-auto w-full max-w-6xl', embedded ? 'px-3 pb-4' : 'px-8 pb-10')}>
-          {data.loading ? (
+          {data.loading && tab !== 'plugins' ? (
             <div className="py-20 text-center text-sm text-muted-foreground">加载中...</div>
           ) : tab === 'skills' ? (
             <SkillsTab
@@ -784,6 +786,8 @@ export function AgentSkillsView({
               onGuideCatalogIntegration={(integration) => { void guideCatalogIntegration(integration) }}
               onRequestCredential={setPendingCredentialIntegration}
             />
+          ) : tab === 'plugins' ? (
+            <PluginsTab workspaceSlug={data.workspaceSlug} search={search} />
           ) : (
             <WorkspaceMemoryTab workspaceSlug={data.workspaceSlug} search={search} />
           )}

@@ -7,7 +7,7 @@
 
 import * as React from 'react'
 import { useAtom, useAtomValue, useSetAtom } from 'jotai'
-import { X, ExternalLink, ChevronRight, MoreHorizontal, FolderSearch, Pencil, FolderInput, GitBranch, GitMerge, MessageSquarePlus, FileDiff, FileText, FolderOpen, Globe, MessageCircle, Brain, Split, Blocks, CalendarDays, ListTodo, Clock, ServerCog, SquareTerminal, Terminal } from 'lucide-react'
+import { X, ExternalLink, ChevronRight, MoreHorizontal, FolderSearch, Pencil, FolderInput, GitBranch, GitMerge, MessageSquarePlus, FileDiff, FileText, FolderOpen, Globe, MessageCircle, Brain, Split, Blocks, CalendarDays, ListTodo, Clock, ServerCog, SquareTerminal, Terminal, Puzzle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { toast } from 'sonner'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -1291,6 +1291,7 @@ export function SidePanel({ sessionId, sessionPath, activeTab, onTabChange, widt
         automations: { label: '定时任务', icon: <Clock className="size-3.5" /> },
         skills: { label: 'Skills', icon: <Blocks className="size-3.5" /> },
         mcp: { label: 'MCP', icon: <ServerCog className="size-3.5" /> },
+        plugins: { label: '插件', icon: <Puzzle className="size-3.5" /> },
         memory: { label: '项目记忆', icon: <Brain className="size-3.5" /> },
         vault: { label: OBSIDIAN_NAME, icon: <ObsidianIcon className="size-3.5" /> },
       }
@@ -1627,6 +1628,8 @@ export function SidePanel({ sessionId, sessionPath, activeTab, onTabChange, widt
       <AgentSkillsView embedded componentTab="skills" workspaceId={currentWorkspaceId ?? undefined} sessionId={sessionId} />
     ) : paneTab === 'mcp' ? (
       <AgentSkillsView embedded componentTab="mcp" workspaceId={currentWorkspaceId ?? undefined} sessionId={sessionId} />
+    ) : paneTab === 'plugins' ? (
+      <AgentSkillsView embedded componentTab="plugins" workspaceId={currentWorkspaceId ?? undefined} sessionId={sessionId} />
     ) : paneTab === 'memory' ? (
       workspaceSlug ? (
         <div className="min-h-0 flex-1 overflow-hidden p-2">
