@@ -35,6 +35,7 @@ import { DeleteMessageDialog } from './DeleteMessageDialog'
 import { InlineEditForm } from './InlineEditForm'
 import { UserAvatar } from './UserAvatar'
 import { getModelLogo, resolveModelDisplayName, resolveModelProvider } from '@/lib/model-logo'
+import { cn } from '@/lib/utils'
 import { userProfileAtom } from '@/atoms/user-profile'
 import { channelsAtom } from '@/atoms/chat-atoms'
 import type { ChatMessage } from '@proma/shared'
@@ -160,6 +161,7 @@ export const ChatMessageItem = React.memo(function ChatMessageItem({
 
   // 并排模式下，user 消息不使用 from="user" 以避免右对齐
   const messageFrom = isParallelMode ? 'assistant' : message.role
+  const isRightAlignedUser = message.role === 'user' && !isParallelMode
 
   return (
     <>
@@ -181,9 +183,9 @@ export const ChatMessageItem = React.memo(function ChatMessageItem({
 
         {/* user 头像 + 用户名 + 时间 */}
         {message.role === 'user' && (
-          <div className="flex items-start gap-2.5 mb-2.5">
+          <div className={cn('flex items-start gap-2.5 mb-2.5', isRightAlignedUser && 'flex-row-reverse')}>
             <UserAvatar avatar={userProfile.avatar} size={35} />
-            <div className="flex flex-col justify-between h-[35px]">
+            <div className={cn('flex flex-col justify-between h-[35px]', isRightAlignedUser && 'items-end text-right')}>
               <span className="text-sm font-semibold text-foreground/60 leading-none">{userProfile.userName}</span>
               <span className="message-time text-[10px] text-foreground/[0.38] leading-none">{formatMessageTime(message.createdAt)}</span>
             </div>
@@ -268,7 +270,7 @@ export const ChatMessageItem = React.memo(function ChatMessageItem({
 
         {/* 操作按钮（非 streaming 时显示，hover 时可见） */}
         {(message.content || message.error || (message.attachments && message.attachments.length > 0)) && !isStreaming && !isInlineEditing && (
-          <MessageActions className="pl-[46px] mt-0.5 min-h-[28px]">
+          <MessageActions className={cn('mt-0.5 min-h-[28px]', isRightAlignedUser ? 'justify-end pr-[46px]' : 'pl-[46px]')}>
             <CopyButton content={message.role === 'user' ? parsedUserContent.text : message.content} />
             {message.role === 'assistant' && conversationId && (
               <MigrateToAgentButton conversationId={conversationId} />
