@@ -77,6 +77,15 @@ extraResources:
     to: default-skills
     filter:
       - "**/*"
+  # 内置 Todo / 日程插件（可在插件管理中卸载并重新安装）
+  - from: ../../plugins/proma-todos
+    to: builtin-plugins/proma-todos
+    filter:
+      - "**/*"
+  - from: ../../plugins/proma-calendar
+    to: builtin-plugins/proma-calendar
+    filter:
+      - "**/*"
   # Proma 品牌 Logo 素材（品牌素材下载功能使用）
   - from: resources/proma-logos
     to: proma-logos

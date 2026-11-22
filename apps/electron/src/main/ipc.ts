@@ -10,7 +10,7 @@ import { existsSync, realpathSync, readFileSync, writeFileSync, mkdirSync, statS
 import { realpath, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { createHash } from 'node:crypto'
-import { IPC_CHANNELS, CHANNEL_IPC_CHANNELS, CHAT_IPC_CHANNELS, AGENT_IPC_CHANNELS, AGENT_ISLAND_IPC_CHANNELS, ENVIRONMENT_IPC_CHANNELS, INSTALLER_IPC_CHANNELS, PROXY_IPC_CHANNELS, GITHUB_RELEASE_IPC_CHANNELS, SYSTEM_PROMPT_IPC_CHANNELS, CHAT_TOOL_IPC_CHANNELS, FEISHU_IPC_CHANNELS, DINGTALK_IPC_CHANNELS, SLACK_IPC_CHANNELS, WECHAT_IPC_CHANNELS, AUTOMATION_IPC_CHANNELS, PLANNING_IPC_CHANNELS, VAULT_IPC_CHANNELS, PLANNING_CONFLICT_ERROR, MAX_ATTACHMENT_SIZE, isPromaPermissionMode, normalizePathForCompare, removeMcpServerFromConfig, TERMINAL_IPC_CHANNELS } from '@proma/shared'
+import { IPC_CHANNELS, CHANNEL_IPC_CHANNELS, CHAT_IPC_CHANNELS, AGENT_IPC_CHANNELS, AGENT_ISLAND_IPC_CHANNELS, ENVIRONMENT_IPC_CHANNELS, INSTALLER_IPC_CHANNELS, PROXY_IPC_CHANNELS, GITHUB_RELEASE_IPC_CHANNELS, SYSTEM_PROMPT_IPC_CHANNELS, CHAT_TOOL_IPC_CHANNELS, FEISHU_IPC_CHANNELS, DINGTALK_IPC_CHANNELS, SLACK_IPC_CHANNELS, WECHAT_IPC_CHANNELS, AUTOMATION_IPC_CHANNELS, PLANNING_IPC_CHANNELS, VAULT_IPC_CHANNELS, PLANNING_CONFLICT_ERROR, MAX_ATTACHMENT_SIZE, USAGE_HISTORY_IPC_CHANNEL, isPromaPermissionMode, normalizePathForCompare, removeMcpServerFromConfig, TERMINAL_IPC_CHANNELS } from '@proma/shared'
 import { USER_PROFILE_IPC_CHANNELS, SETTINGS_IPC_CHANNELS, SCRATCH_PAD_IPC_CHANNELS, QUICK_TASK_IPC_CHANNELS, VOICE_DICTATION_IPC_CHANNELS, APP_ICON_IPC_CHANNELS, DOCK_BADGE_IPC_CHANNELS, STORAGE_IPC_CHANNELS, WINDOWS_AGENT_ISLAND_IPC_CHANNELS, TRAY_IPC_CHANNELS } from '../types'
 import type {
   QuickTaskSubmitInput,
@@ -151,6 +151,9 @@ import type {
   SavePlanningSyncProfileInput,
   PromaPluginSettingsSnapshot,
   SavePromaPluginSettingsInput,
+  PromaMarketplacePlugin,
+  PluginInstallResult,
+  UsageHistorySnapshot,
   BrowserViewState,
   BrowserViewLayout,
   BrowserNavigateInput,
@@ -362,8 +365,9 @@ import {
   removeWorktreeRepo,
   cleanupStaleWorkspaceAttachedPaths,
 } from './lib/agent-workspace-manager'
-import { createPluginTemplate, getInstalledPlugin, installPluginFromFolder, installPluginFromZip, listPlugins, uninstallPlugin } from './lib/plugin-manager'
+import { createPluginTemplate, getInstalledPlugin, getMarketplaceDir, installBuiltinPlugin, installMarketplacePlugin, installPluginFromFolder, installPluginFromZip, listMarketplacePlugins, listPlugins, publishPluginToMarketplace, seedBuiltinPlugins, uninstallPlugin } from './lib/plugin-manager'
 import { getPluginSettingsSnapshot, savePluginSettings } from './lib/plugin-settings'
+import { getUsageHistory } from './lib/usage-history'
 import { movePathSafely } from './lib/file-move-service'
 import { subscribeWorkspaceMemoryChanges } from './lib/workspace-memory-change-watcher'
 import { confirmWorkspaceMemoryWindowClose, markWorkspaceMemoryWindowReady } from './lib/workspace-memory-window'
@@ -2867,6 +2871,8 @@ export function registerIpcHandlers(): void {
 
   // 确保默认工作区存在
   ensureDefaultWorkspace()
+  // �w^~)�v��y��yۧu���e�w^~)�v��y��yۧu���j�w^~)�v��y��yۧu���V�w^~)�v��y��yۧu���E�w^~)�v��y��yۧu���v�w^~)�v��y��yۧu���}�w^~)�v��y��yۧu���p�w^~)�v��y��yۧu���Z�w^~)�v��y��yۧu���j�w^~)�v��y��yۧu���^�w^~)�v
+  for (const workspace of listAgentWorkspaces()) seedBuiltinPlugins(workspace.slug)
 
   // 获取 Agent 工作区列表
   ipcMain.handle(
@@ -2888,6 +2894,7 @@ export function registerIpcHandlers(): void {
     AGENT_IPC_CHANNELS.CREATE_WORKSPACE,
     async (_, input: import('@proma/shared').CreateAgentWorkspaceInput): Promise<AgentWorkspace> => {
       const workspace = await createAgentWorkspace(input)
+      seedBuiltinPlugins(workspace.slug)
       if (workspace.projectRootPath) watchAttachedDirectory(workspace.projectRootPath)
       return workspace
     }
@@ -2898,6 +2905,7 @@ export function registerIpcHandlers(): void {
     AGENT_IPC_CHANNELS.CREATE_PROJECT,
     async (_, input: import('@proma/shared').CreateAgentWorkspaceInput, channelId?: string, modelId?: string): Promise<import('@proma/shared').CreateAgentProjectResult> => {
       const workspace = await createAgentWorkspace(input)
+      seedBuiltinPlugins(workspace.slug)
       if (workspace.projectRootPath) watchAttachedDirectory(workspace.projectRootPath)
 
       try {
@@ -3487,10 +3495,51 @@ export function registerIpcHandlers(): void {
   )
 
   ipcMain.handle(
+    AGENT_IPC_CHANNELS.INSTALL_BUILTIN_PLUGIN,
+    async (_, workspaceSlug: string, pluginId: string): Promise<import('@proma/shared').PluginInstallResult> => {
+      return installBuiltinPlugin(workspaceSlug, pluginId)
+    },
+  )
+
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.LIST_MARKETPLACE_PLUGINS,
+    async (_, workspaceSlug: string): Promise<PromaMarketplacePlugin[]> => {
+      return listMarketplacePlugins(workspaceSlug)
+    },
+  )
+
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.INSTALL_MARKETPLACE_PLUGIN,
+    async (_, workspaceSlug: string, pluginId: string): Promise<PluginInstallResult> => {
+      return installMarketplacePlugin(workspaceSlug, pluginId)
+    },
+  )
+
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.PUBLISH_PLUGIN_TO_MARKETPLACE,
+    async (_, workspaceSlug: string, pluginId: string): Promise<string> => {
+      return publishPluginToMarketplace(workspaceSlug, pluginId)
+    },
+  )
+
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.OPEN_MARKETPLACE_FOLDER,
+    async (): Promise<void> => {
+      const error = await shell.openPath(getMarketplaceDir())
+      if (error) throw new Error('无法打开插件市场目录: ' + error)
+    },
+  )
+
+  ipcMain.handle(
     AGENT_IPC_CHANNELS.GET_PLUGIN_SETTINGS,
     async (_, workspaceSlug: string, pluginId: string): Promise<PromaPluginSettingsSnapshot> => {
       return getPluginSettingsSnapshot(workspaceSlug, pluginId)
     },
+  )
+
+  ipcMain.handle(
+    USAGE_HISTORY_IPC_CHANNEL,
+    async (): Promise<UsageHistorySnapshot> => getUsageHistory(),
   )
 
   ipcMain.handle(

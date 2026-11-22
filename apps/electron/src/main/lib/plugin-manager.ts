@@ -8,9 +8,10 @@
 
 import AdmZip from 'adm-zip'
 import { createHash, randomBytes } from 'node:crypto'
-import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { copyFileSync, cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path'
+import { BUILTIN_PROMA_PLUGINS } from '@proma/shared'
 import {
   getAgentWorkspaceBySlug,
   getWorkspaceMcpConfig,
@@ -18,7 +19,7 @@ import {
   normalizeWorkspaceMcpConfig,
   saveWorkspaceMcpConfig,
 } from './agent-workspace-manager'
-import { getConfigDir, getInactiveSkillsDir, getWorkspaceSkillsDir } from './config-paths'
+import { getAgentWorkspacePath, getConfigDir, getInactiveSkillsDir, getWorkspaceSkillsDir } from './config-paths'
 import { readJsonFileSafe, writeJsonFileAtomic } from './safe-file'
 import { renameWithRetry, rmSyncWithRetry } from './fs-retry'
 import type {
@@ -32,6 +33,8 @@ import type {
   PromaPluginSettingField,
   PromaPluginSettingOption,
   PromaPluginSettingsSchema,
+  PromaPluginUiSchema,
+  PromaMarketplacePlugin,
   WorkspaceMcpConfig,
 } from '@proma/shared'
 
@@ -45,6 +48,7 @@ const VALID_MCP_TYPES = new Set(['stdio', 'http', 'sse', 'streamableHttp', 'stre
 const VALID_SETTING_TYPES = new Set(['text', 'password', 'number', 'boolean', 'select'])
 const SETTING_KEY_RE = /^[A-Za-z_][A-Za-z0-9_.-]{0,63}$/
 const SETTING_ENV_RE = /^[A-Za-z_][A-Za-z0-9_]*$/
+const UI_ICON_RE = /^[a-z0-9][a-z0-9-]{0,39}$/
 
 interface PluginRegistry {
   workspaces: Record<string, InstalledPromaPlugin[]>
@@ -235,6 +239,49 @@ function parsePluginSettings(value: unknown): PromaPluginSettingsSchema | undefi
   return { fields }
 }
 
+function parsePluginUi(value: unknown, root: string): PromaPluginUiSchema | undefined {
+  if (value === undefined) return undefined
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    fail('插件 ui 必须是对象')
+  }
+  const raw = value as Record<string, unknown>
+  const entry = typeof raw.entry === 'string' ? raw.entry.trim() : ''
+  if (!entry) fail('插件 ui.entry 必填')
+  if (!/\.html?$/i.test(entry)) fail('插件 ui.entry 必须指向 HTML 文件')
+  const entryPath = resolveInside(root, entry, '插件 UI')
+  if (!existsSync(entryPath) || !statSync(entryPath).isFile()) {
+    fail('插件 UI 入口不存在: ' + entry)
+  }
+
+  const ui: PromaPluginUiSchema = { entry: entry.replace(/\\/g, '/') }
+  if (raw.sidebar !== undefined) {
+    if (!raw.sidebar || typeof raw.sidebar !== 'object' || Array.isArray(raw.sidebar)) {
+      fail('插件 ui.sidebar 必须是对象')
+    }
+    const sidebar = raw.sidebar as Record<string, unknown>
+    const title = typeof sidebar.title === 'string' ? sidebar.title.trim() : ''
+    if (!title) fail('插件 ui.sidebar.title 必填')
+    if (title.length > 40) fail('插件 ui.sidebar.title 不能超过 40 个字符')
+    const icon = typeof sidebar.icon === 'string' ? sidebar.icon.trim().toLowerCase() : undefined
+    if (icon !== undefined && !UI_ICON_RE.test(icon)) {
+      fail('插件 ui.sidebar.icon 只能包含小写字母、数字和短横线')
+    }
+    if (sidebar.order !== undefined && (!Number.isInteger(sidebar.order) || Math.abs(sidebar.order as number) > 10000)) {
+      fail('插件 ui.sidebar.order 必须是 -10000 到 10000 之间的整数')
+    }
+    if (sidebar.replaces !== undefined && sidebar.replaces !== 'todos' && sidebar.replaces !== 'calendar') {
+      fail('插件 ui.sidebar.replaces 只能是 todos 或 calendar')
+    }
+    ui.sidebar = {
+      title,
+      ...(icon ? { icon } : {}),
+      ...(sidebar.order !== undefined ? { order: sidebar.order as number } : {}),
+      ...(sidebar.replaces !== undefined ? { replaces: sidebar.replaces as 'todos' | 'calendar' } : {}),
+    }
+  }
+  return ui
+}
+
 export function readManifest(root: string): PromaPluginManifest {
   const manifestPath = findManifestPath(root)
   let parsed: unknown
@@ -275,6 +322,10 @@ export function readManifest(root: string): PromaPluginManifest {
 
   if (raw.settings !== undefined) {
     manifest.settings = parsePluginSettings(raw.settings)
+  }
+
+  if (raw.ui !== undefined) {
+    manifest.ui = parsePluginUi(raw.ui, root)
   }
 
   return manifest
@@ -495,8 +546,8 @@ function installPluginFromRoot(
   const rawMcpServers = collectMcpServers(pluginDir, manifest)
   const mcpServers = normalizeMcpEntries(rawMcpServers, pluginDir)
 
-  if (skills.length === 0 && Object.keys(mcpServers).length === 0) {
-    fail('插件至少需要包含一个 Skill 或 MCP 服务器')
+  if (skills.length === 0 && Object.keys(mcpServers).length === 0 && !manifest.ui) {
+    fail('插件至少需要包含一个 Skill、MCP 服务器或 UI 入口')
   }
 
   const registry = readRegistry()
@@ -555,6 +606,7 @@ function installPluginFromRoot(
       skills: skills.map((skill) => skill.slug),
       mcpServers: Object.keys(mcpServers),
       ...(manifest.settings ? { settings: manifest.settings } : {}),
+      ...(manifest.ui ? { ui: manifest.ui } : {}),
       skillFingerprints,
       mcpServerFingerprints,
     }
@@ -638,7 +690,11 @@ export function listPlugins(workspaceSlug: string): InstalledPromaPlugin[] {
   return (readRegistry().workspaces[workspaceSlug] ?? []).map((plugin) => {
     try {
       const manifest = readManifest(plugin.directory)
-      return manifest.settings ? { ...plugin, settings: manifest.settings } : plugin
+      return {
+        ...plugin,
+        ...(manifest.settings ? { settings: manifest.settings } : {}),
+        ...(manifest.ui ? { ui: manifest.ui } : {}),
+      }
     } catch {
       return plugin
     }
@@ -650,9 +706,322 @@ export function getInstalledPlugin(workspaceSlug: string, pluginId: string): Ins
   if (!plugin) fail('插件未安装: ' + pluginId)
   try {
     const manifest = readManifest(plugin.directory)
-    return manifest.settings ? { ...plugin, settings: manifest.settings } : plugin
+    return {
+      ...plugin,
+      ...(manifest.settings ? { settings: manifest.settings } : {}),
+      ...(manifest.ui ? { ui: manifest.ui } : {}),
+    }
   } catch {
     return plugin
+  }
+}
+
+/** 协议处理器按 id + 版本定位插件缓存目录；不信任渲染进程传入的绝对路径。 */
+export function resolvePluginUiRoot(pluginId: string, version: string): string | null {
+  if (!PLUGIN_ID_RE.test(pluginId) || !version) return null
+  const registry = readRegistry()
+  for (const plugins of Object.values(registry.workspaces)) {
+    for (const plugin of plugins) {
+      if (plugin.id !== pluginId || plugin.version !== version) continue
+      try {
+        if (statSync(plugin.directory).isDirectory()) return plugin.directory
+      } catch {
+        // 缓存目录已损坏时继续查找其他工作区记录
+      }
+    }
+  }
+  return null
+}
+
+/** 解析 Proma 自带插件的源目录；开发环境与打包环境都可用。 */
+export function resolveBuiltinPluginSource(pluginId: string): string | null {
+  if (!BUILTIN_PROMA_PLUGINS.some((plugin) => plugin.id === pluginId)) return null
+  const candidates = [
+    resolve(process.cwd(), 'plugins', pluginId),
+    resolve(process.cwd(), '..', 'plugins', pluginId),
+    resolve(process.cwd(), '..', '..', 'plugins', pluginId),
+  ]
+  const resourcesPath = (process as unknown as { resourcesPath?: string }).resourcesPath
+  if (resourcesPath) candidates.push(join(resourcesPath, 'builtin-plugins', pluginId))
+  return candidates.find((candidate) => existsSync(join(candidate, 'proma-plugin.json'))) ?? null
+}
+
+/** 安装一个 Proma 自带插件；源目录不存在时明确报错。 */
+export function installBuiltinPlugin(
+  workspaceSlug: string,
+  pluginId: string,
+  options: PluginInstallOptions = {},
+): PluginInstallResult {
+  const source = resolveBuiltinPluginSource(pluginId)
+  if (!source) fail('内置插件资源不存在: ' + pluginId)
+  return installPluginFromFolder(workspaceSlug, source, options)
+}
+
+/** 用户插件市场目录；卸载插件不会动这里，方便随时重新安装。 */
+export function getMarketplaceDir(): string {
+  const dir = join(getConfigDir(), 'marketplace')
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
+  return dir
+}
+
+function getProjectPluginDirs(): string[] {
+  const candidates = [
+    resolve(process.cwd(), 'plugins'),
+    resolve(process.cwd(), '..', 'plugins'),
+    resolve(process.cwd(), '..', '..', 'plugins'),
+  ]
+  return [...new Set(candidates)].filter((dir) => existsSync(dir))
+}
+
+function isBuiltinPluginId(pluginId: string): boolean {
+  return BUILTIN_PROMA_PLUGINS.some((plugin) => plugin.id === pluginId)
+}
+
+function countManifestSkills(root: string, manifest: PromaPluginManifest): number {
+  if (manifest.skills && manifest.skills.length > 0) return manifest.skills.length
+  const skillsRoot = join(root, 'skills')
+  if (!existsSync(skillsRoot)) return 0
+  return readdirSync(skillsRoot, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && existsSync(join(skillsRoot, entry.name, 'SKILL.md')))
+    .length
+}
+
+/** 读取一个插件文件夹的展示信息；无效或缺少清单时返回 null。 */
+export function readMarketplaceFolder(
+  root: string,
+  origin: PromaMarketplacePlugin['origin'],
+): PromaMarketplacePlugin | null {
+  try {
+    const pluginRoot = findPluginRoot(resolve(root))
+    const manifest = readManifest(pluginRoot)
+    return {
+      id: manifest.id,
+      name: manifest.name,
+      version: manifest.version,
+      ...(manifest.description ? { description: manifest.description } : {}),
+      ...(manifest.author ? { author: manifest.author } : {}),
+      ...(manifest.homepage ? { homepage: manifest.homepage } : {}),
+      source: pluginRoot,
+      sourceType: 'folder',
+      origin,
+      builtin: isBuiltinPluginId(manifest.id) || origin === 'builtin',
+      installedVersion: null,
+      skillCount: countManifestSkills(pluginRoot, manifest),
+      mcpServerCount: Object.keys(collectMcpServers(pluginRoot, manifest)).length,
+      hasUi: Boolean(manifest.ui),
+    }
+  } catch (error) {
+    console.warn('[Proma 插件市场] 跳过无效插件目录 ' + root + ':', error)
+    return null
+  }
+}
+
+function countZipSkills(
+  entries: ReturnType<AdmZip['getEntries']>,
+  rootPrefix: string,
+  manifest: PromaPluginManifest,
+): number {
+  if (manifest.skills && manifest.skills.length > 0) return manifest.skills.length
+  const slugs = new Set<string>()
+  for (const entry of entries) {
+    if (entry.isDirectory) continue
+    const name = entry.entryName.replace(/\\/g, '/')
+    if (!name.startsWith(rootPrefix + 'skills/') || !/\/SKILL\.md$/i.test(name)) continue
+    const rest = name.slice((rootPrefix + 'skills/').length)
+    const slug = rest.split('/')[0]
+    if (slug) slugs.add(slug)
+  }
+  return slugs.size
+}
+
+function countZipMcpServers(entries: ReturnType<AdmZip['getEntries']>, rootPrefix: string): number {
+  const manifestEntry = entries.find((entry) => (
+    !entry.isDirectory
+    && entry.entryName.replace(/\\/g, '/') === rootPrefix + 'mcp.json'
+  ))
+  let fromFile = 0
+  if (manifestEntry) {
+    try {
+      const parsed = JSON.parse(manifestEntry.getData().toString('utf-8')) as Record<string, unknown>
+      const servers = parsed.servers && typeof parsed.servers === 'object' && !Array.isArray(parsed.servers)
+        ? parsed.servers
+        : parsed.mcpServers && typeof parsed.mcpServers === 'object' && !Array.isArray(parsed.mcpServers)
+          ? parsed.mcpServers
+          : parsed
+      fromFile = Object.keys(servers as Record<string, unknown>).length
+    } catch {
+      fromFile = 0
+    }
+  }
+  return fromFile
+}
+
+/** 读取一个插件 zip 的展示信息；不展开压缩包，只读取清单。 */
+export function readMarketplaceZip(
+  zipPath: string,
+  origin: PromaMarketplacePlugin['origin'],
+): PromaMarketplacePlugin | null {
+  try {
+    const zip = new AdmZip(zipPath)
+    const entries = zip.getEntries()
+    const manifestEntries = entries.filter((entry) => (
+      !entry.isDirectory
+      && /^(?:[^/]+\/)?(?:proma-plugin|plugin)\.json$/i.test(entry.entryName.replace(/\\/g, '/'))
+    ))
+    if (manifestEntries.length === 0) return null
+    const roots = new Set(manifestEntries.map((entry) => {
+      const name = entry.entryName.replace(/\\/g, '/')
+      return name.slice(0, name.lastIndexOf('/') + 1)
+    }))
+    if (roots.size !== 1) return null
+    const chosen = manifestEntries.find((entry) => /proma-plugin\.json$/i.test(entry.entryName))
+      ?? manifestEntries[0]!
+    const raw = JSON.parse(chosen.getData().toString('utf-8')) as Record<string, unknown>
+    const id = typeof raw.id === 'string' ? raw.id.trim().toLowerCase() : ''
+    const name = typeof raw.name === 'string' ? raw.name.trim() : ''
+    const version = typeof raw.version === 'string' ? raw.version.trim() : ''
+    if (!PLUGIN_ID_RE.test(id) || !name || !version) return null
+    const manifest: PromaPluginManifest = { id, name, version }
+    const rootPrefix = chosen.entryName.replace(/\\/g, '/').slice(0, chosen.entryName.replace(/\\/g, '/').lastIndexOf('/') + 1)
+    const manifestMcp = raw.mcpServers && typeof raw.mcpServers === 'object' && !Array.isArray(raw.mcpServers)
+      ? Object.keys(raw.mcpServers as Record<string, unknown>).length
+      : 0
+    return {
+      id,
+      name,
+      version,
+      ...(typeof raw.description === 'string' && raw.description.trim() ? { description: raw.description.trim() } : {}),
+      ...(typeof raw.author === 'string' && raw.author.trim() ? { author: raw.author.trim() } : {}),
+      ...(typeof raw.homepage === 'string' && raw.homepage.trim() ? { homepage: raw.homepage.trim() } : {}),
+      source: resolve(zipPath),
+      sourceType: 'zip',
+      origin,
+      builtin: isBuiltinPluginId(id) || origin === 'builtin',
+      installedVersion: null,
+      skillCount: countZipSkills(entries, rootPrefix, manifest),
+      mcpServerCount: Math.max(manifestMcp, countZipMcpServers(entries, rootPrefix)),
+      hasUi: Boolean(raw.ui && typeof raw.ui === 'object' && !Array.isArray(raw.ui)),
+    }
+  } catch {
+    return null
+  }
+}
+
+/** 列出插件市场：用户市场目录、仓库 plugins/ 与 Proma 内置插件。同一 id 只保留最先扫描到的来源。 */
+export function listMarketplacePlugins(workspaceSlug: string): PromaMarketplacePlugin[] {
+  const installed = new Map(listPlugins(workspaceSlug).map((plugin) => [plugin.id, plugin.version]))
+  const found = new Map<string, PromaMarketplacePlugin>()
+
+  const add = (item: PromaMarketplacePlugin | null): void => {
+    if (!item || found.has(item.id)) return
+    found.set(item.id, { ...item, installedVersion: installed.get(item.id) ?? null })
+  }
+
+  const marketplaceDir = getMarketplaceDir()
+  for (const entry of readdirSync(marketplaceDir, { withFileTypes: true })) {
+    if (entry.name.startsWith('.')) continue
+    const path = join(marketplaceDir, entry.name)
+    if (entry.isDirectory()) add(readMarketplaceFolder(path, 'marketplace'))
+    else if (/\.zip$/i.test(entry.name)) add(readMarketplaceZip(path, 'marketplace'))
+  }
+
+  for (const dir of getProjectPluginDirs()) {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (entry.name.startsWith('.')) continue
+      const path = join(dir, entry.name)
+      if (entry.isDirectory()) add(readMarketplaceFolder(path, 'project'))
+      else if (/\.zip$/i.test(entry.name)) add(readMarketplaceZip(path, 'project'))
+    }
+  }
+
+  for (const plugin of BUILTIN_PROMA_PLUGINS) {
+    const source = resolveBuiltinPluginSource(plugin.id)
+    if (source) add(readMarketplaceFolder(source, 'builtin'))
+  }
+
+  return [...found.values()].sort((a, b) => {
+    const originOrder = { builtin: 0, project: 1, marketplace: 2 }
+    return originOrder[a.origin] - originOrder[b.origin] || a.name.localeCompare(b.name)
+  })
+}
+
+/** 从市场来源一键安装；始终以最新扫描结果为准，避免渲染进程传入任意路径。 */
+export function installMarketplacePlugin(workspaceSlug: string, pluginId: string): PluginInstallResult {
+  const item = listMarketplacePlugins(workspaceSlug).find((plugin) => plugin.id === pluginId)
+  if (!item) fail('插件市场中找不到: ' + pluginId)
+  if (item.sourceType === 'zip') {
+    return installPluginFromZip(workspaceSlug, item.source, { overwrite: true })
+  }
+  return installPluginFromFolder(workspaceSlug, item.source, { overwrite: true })
+}
+
+/** 把已安装插件复制到用户市场目录，卸载后仍可从市场一键装回。 */
+export function publishPluginToMarketplace(workspaceSlug: string, pluginId: string): string {
+  const plugin = getInstalledPlugin(workspaceSlug, pluginId)
+  const source = existsSync(plugin.source) ? plugin.source : plugin.directory
+  if (!existsSync(source)) fail('插件源已不存在，无法加入市场: ' + pluginId)
+  const info = statSync(source)
+
+  if (info.isDirectory()) {
+    const target = join(getMarketplaceDir(), plugin.id)
+    if (resolve(source) !== resolve(target)) {
+      if (existsSync(target)) rmSyncWithRetry(target, { recursive: true, force: true })
+      const staleZip = join(getMarketplaceDir(), plugin.id + '.zip')
+      if (existsSync(staleZip)) rmSyncWithRetry(staleZip, { force: true })
+      cpSync(source, target, {
+        recursive: true,
+        filter: (src) => !/(^|[\\/])\.git([\\/]|$)/.test(src),
+      })
+    }
+    return target
+  }
+
+  if (info.isFile() && /\.zip$/i.test(source)) {
+    const target = join(getMarketplaceDir(), plugin.id + '.zip')
+    if (resolve(source) !== resolve(target)) {
+      if (existsSync(target)) rmSyncWithRetry(target, { force: true })
+      const staleFolder = join(getMarketplaceDir(), plugin.id)
+      if (existsSync(staleFolder)) rmSyncWithRetry(staleFolder, { recursive: true, force: true })
+      copyFileSync(source, target)
+    }
+    return target
+  }
+
+  fail('不支持的插件来源: ' + source)
+}
+
+/**
+ * 首次创建工作区时安装内置 Todo / 日程插件。
+ * 标记文件确保用户卸载后不会在下次启动时被自动装回。
+ */
+export function seedBuiltinPlugins(workspaceSlug: string): void {
+  let workspaceDir: string
+  try {
+    workspaceDir = getAgentWorkspacePath(workspaceSlug)
+  } catch {
+    return
+  }
+  const marker = join(workspaceDir, '.proma-builtin-plugins-seeded')
+  if (existsSync(marker)) return
+
+  const installed = new Set(listPlugins(workspaceSlug).map((plugin) => plugin.id))
+  let failed = false
+  for (const plugin of BUILTIN_PROMA_PLUGINS) {
+    if (installed.has(plugin.id)) continue
+    try {
+      installBuiltinPlugin(workspaceSlug, plugin.id)
+      console.log('[Proma 插件] 已安装内置插件 ' + plugin.id + ' -> ' + workspaceSlug)
+    } catch (error) {
+      failed = true
+      console.warn('[Proma 插件] 内置插件初始化失败 ' + plugin.id + ':', error)
+    }
+  }
+  // 安装失败时不写标记，下次启动还能补装；成功后标记会阻止卸载的插件被装回。
+  if (failed) return
+  try {
+    writeFileSync(marker, new Date().toISOString(), 'utf-8')
+  } catch (error) {
+    console.warn('[Proma 插件] 写入内置插件标记失败:', error)
   }
 }
 
@@ -712,6 +1081,7 @@ export function createPluginTemplate(): string {
   if (existsSync(dir)) return dir
 
   mkdirSync(join(dir, 'skills', 'hello'), { recursive: true })
+  mkdirSync(join(dir, 'ui'), { recursive: true })
   writeJsonFileAtomic(join(dir, 'proma-plugin.json'), {
     id: 'hello-plugin',
     name: 'Hello Plugin',
@@ -730,7 +1100,47 @@ export function createPluginTemplate(): string {
         },
       ],
     },
+    ui: {
+      entry: 'ui/index.html',
+      sidebar: {
+        title: 'Hello Plugin',
+        icon: 'puzzle',
+        order: 100,
+      },
+    },
   })
+  writeFileSync(
+    join(dir, 'ui', 'index.html'),
+    [
+      '<!doctype html>',
+      '<html lang="zh-CN">',
+      '<head>',
+      '  <meta charset="utf-8">',
+      '  <meta name="viewport" content="width=device-width, initial-scale=1">',
+      '  <title>Hello Plugin</title>',
+      '  <style>',
+      '    body { margin: 0; padding: 24px; background: #f7f7f8; color: #1f2328; font: 14px/1.6 system-ui, sans-serif; }',
+      '    .card { max-width: 560px; margin: 0 auto; padding: 20px; border: 1px solid rgba(0,0,0,.08); border-radius: 12px; background: #fff; }',
+      '    code { padding: 1px 5px; border-radius: 4px; background: rgba(0,0,0,.06); }',
+      '    @media (prefers-color-scheme: dark) {',
+      '      body { background: #17191e; color: #e8eaed; }',
+      '      .card { background: #1f2229; border-color: rgba(255,255,255,.1); }',
+      '      code { background: rgba(255,255,255,.08); }',
+      '    }',
+      '  </style>',
+      '</head>',
+      '<body>',
+      '  <div class="card">',
+      '    <h1>Hello Plugin</h1>',
+      '    <p>这个页面由 <code>ui/index.html</code> 渲染。左侧栏入口来自清单里的 <code>ui.sidebar</code>。</p>',
+      '    <p>调用 <code>window.proma.planning</code> 可以读写 Todo 和日程。</p>',
+      '  </div>',
+      '  <script src="/__proma__/bridge.js"></script>',
+      '</body>',
+      '</html>',
+    ].join('\n'),
+    'utf-8',
+  )
   writeFileSync(
     join(dir, 'skills', 'hello', 'SKILL.md'),
     [
@@ -774,11 +1184,14 @@ export function createPluginTemplate(): string {
       '- skills/<slug>/SKILL.md：插件提供的 Skills',
       '- mcp.json：可选，声明 MCP 服务器',
       '- settings：可选，在插件的「配置」对话框展示字段，并通过 env 注入 MCP 子进程',
+      '- ui/index.html：可选，插件界面；清单 ui.sidebar 可在左侧栏注册入口',
       '',
       '把 mcp.json.example 改名为 mcp.json 即可声明 MCP。',
       'MCP 的 command / args / env / url / headers 中可以使用 $PLUGIN_DIR，安装时会替换成插件缓存目录。',
       '',
       '安装方式：Proma → Agent 技能 → 插件 → 从文件夹安装。',
+      '',
+      '界面开发不需要启动 Electron：bun run plugins:preview <本插件目录>。',
       '',
     ].join('\n'),
     'utf-8',

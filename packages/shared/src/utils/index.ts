@@ -94,3 +94,5 @@ export {
   collectSuccessfulSkillReadActivations,
   collectSkillActivations,
 } from './skill-usage'
+
+export { PLUGIN_UI_BRIDGE_SCRIPT } from './plugin-ui-bridge'

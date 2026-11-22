@@ -52,7 +52,10 @@ import {
   unviewedCompletedDelegatedSessionIdsAtom,
   isWorkspaceComponentTab,
   isUserPriorityWorkspaceComponentTab,
-  sanitizeWorkspaceComponentTabs,
+  sanitizeAgentWorkspaceTabs,
+  isAgentWorkspaceTab,
+  getPluginIdFromWorkspaceTab,
+  workspaceCapabilitiesVersionAtom,
   getDelegationTabLabel,
   fileBrowserAutoRevealAtom,
   fileBrowserScrollTopMapAtom,
@@ -81,10 +84,12 @@ import {
   getTerminalIdFromSidePanelTab,
   getTerminalSidePanelTab,
 } from '@/atoms/agent-atoms'
-import type { AgentSidePanelTab, AgentFileSourceFilter, AgentExplorationBranchTab, WorkspaceComponentTab } from '@/atoms/agent-atoms'
+import type { AgentSidePanelTab, AgentFileSourceFilter, AgentExplorationBranchTab, AgentWorkspaceTab, WorkspaceComponentTab } from '@/atoms/agent-atoms'
 import { WorkspaceMemoryTab } from '@/components/agent-skills/WorkspaceMemoryTab'
 import { AgentSkillsView } from '@/components/agent-skills/AgentSkillsView'
 import { PlanningView } from '@/components/planning/PlanningView'
+import { PluginUiFrame } from '@/components/plugins/PluginUiFrame'
+import { getPluginIcon } from '@/components/plugins/plugin-icons'
 import { AutomationFormView } from '@/components/automation/AutomationFormView'
 import { automationFormAtom } from '@/atoms/automation-atoms'
 import { memoryFileNavigationAtom, workspaceMemoryChangesAtom } from '@/atoms/memory-change-atoms'
@@ -107,7 +112,7 @@ import {
 import { PreviewPanel } from '@/components/diff/PreviewPanel'
 import { clearPreviewContentCacheForFile } from '@/lib/preview-content-cache'
 import { useOpenPreview } from '@/components/diff/preview-opener'
-import type { FileEntry, AgentPendingFile, AgentSessionMeta, SDKMessage, WorktreeInfo } from '@proma/shared'
+import type { FileEntry, AgentPendingFile, AgentSessionMeta, SDKMessage, WorktreeInfo, InstalledPromaPlugin } from '@proma/shared'
 import { setFilePanelDragData, getMediaTypeFromFilename, dispatchInsertFileMention } from '@/lib/file-panel-drag'
 import { CLOSE_ACTIVE_RIGHT_WORKSPACE_TAB_EVENT } from '@/lib/right-workspace-events'
 import {
@@ -881,17 +886,29 @@ export function SidePanel({ sessionId, sessionPath, activeTab, onTabChange, widt
   // Todo / 日程 / 能力 / 记忆的数据仍归属于 workspace，但右侧 Tab 仅属于当前 session。
   const [workspaceComponentTabs, setWorkspaceComponentTabs] = useAtom(agentSessionComponentTabsAtomFamily(sessionId))
   const productivityTools = useAtomValue(productivityToolsAtom)
+  const capabilitiesVersion = useAtomValue(workspaceCapabilitiesVersionAtom)
+  const [installedPlugins, setInstalledPlugins] = React.useState<InstalledPromaPlugin[]>([])
+  React.useEffect(() => {
+    if (!workspaceSlug) {
+      setInstalledPlugins([])
+      return
+    }
+    let cancelled = false
+    window.electronAPI.listWorkspacePlugins(workspaceSlug)
+      .then((plugins) => { if (!cancelled) setInstalledPlugins(plugins) })
+      .catch(() => { if (!cancelled) setInstalledPlugins([]) })
+    return () => { cancelled = true }
+  }, [workspaceSlug, capabilitiesVersion])
   const automationFormOpen = useAtomValue(automationFormAtom).open
-  const isWorkspaceComponentEnabled = React.useCallback((component: WorkspaceComponentTab): boolean => (
-    component !== 'todos' || productivityTools.todosEnabled
-  ) && (
-    component !== 'calendar' || productivityTools.calendarEnabled
-  ) && (
-    component !== 'vault' || productivityTools.obsidianEnabled
-  ), [productivityTools.calendarEnabled, productivityTools.obsidianEnabled, productivityTools.todosEnabled])
+  const isWorkspaceComponentEnabled = React.useCallback((component: AgentWorkspaceTab): boolean => {
+    if (!isWorkspaceComponentTab(component)) return true
+    return (component !== 'todos' || productivityTools.todosEnabled)
+      && (component !== 'calendar' || productivityTools.calendarEnabled)
+      && (component !== 'vault' || productivityTools.obsidianEnabled)
+  }, [productivityTools.calendarEnabled, productivityTools.obsidianEnabled, productivityTools.todosEnabled])
 
   React.useEffect(() => {
-    const validTabs = sanitizeWorkspaceComponentTabs(workspaceComponentTabs)
+    const validTabs = sanitizeAgentWorkspaceTabs(workspaceComponentTabs)
       .filter(isWorkspaceComponentEnabled)
     if (validTabs.length === workspaceComponentTabs.length && validTabs.every((tab, index) => tab === workspaceComponentTabs[index])) return
     setWorkspaceComponentTabs(validTabs)
@@ -907,7 +924,7 @@ export function SidePanel({ sessionId, sessionPath, activeTab, onTabChange, widt
     // `temporary-agent` 是旧的单分支内存状态；新状态使用 exploration:<sessionId>。
     : activeTab === 'temporary-agent' || (activeExplorationSessionId !== null && !activeExplorationBranch) || (activeTab === 'delegation' && !selectedDelegationSession) || (activeTerminalId !== null && !terminalTabs.some((terminal) => terminal.terminalId === activeTerminalId))
       ? 'files'
-      : isWorkspaceComponentTab(activeTab) && (!workspaceSlug || !workspaceComponentTabs.includes(activeTab) || !isWorkspaceComponentEnabled(activeTab))
+      : isAgentWorkspaceTab(activeTab) && (!workspaceSlug || !workspaceComponentTabs.includes(activeTab) || !isWorkspaceComponentEnabled(activeTab))
         ? 'files'
         : activeTab
   const [splitMap, setSplitMap] = useAtom(agentSidePanelSplitMapAtom)
@@ -1285,6 +1302,16 @@ export function SidePanel({ sessionId, sessionPath, activeTab, onTabChange, widt
     { id: 'files', label: '文件', icon: <FolderOpen className="size-3.5" /> },
     { id: 'changes', label: '改动', icon: <FileDiff className="size-3.5" /> },
     ...workspaceComponentTabs.map((component) => {
+      if (!isWorkspaceComponentTab(component)) {
+        const pluginId = getPluginIdFromWorkspaceTab(component)
+        const plugin = pluginId ? installedPlugins.find((item) => item.id === pluginId) : undefined
+        return {
+          id: component,
+          label: plugin?.ui?.sidebar?.title ?? plugin?.name ?? '插件',
+          icon: getPluginIcon(plugin?.ui?.sidebar?.icon, 14),
+          closable: true,
+        }
+      }
       const meta: Record<WorkspaceComponentTab, { label: string; icon: React.ReactNode }> = {
         todos: { label: 'Todo', icon: <ListTodo className="size-3.5" /> },
         calendar: { label: '日程', icon: <CalendarDays className="size-3.5" /> },
@@ -1369,7 +1396,7 @@ export function SidePanel({ sessionId, sessionPath, activeTab, onTabChange, widt
       returnToPreviousTabAfterClose(tab)
       return
     }
-    if (isWorkspaceComponentTab(tab)) {
+    if (isAgentWorkspaceTab(tab)) {
       setWorkspaceComponentTabs((previous) => previous.filter((component) => component !== tab))
       returnToPreviousTabAfterClose(tab)
       return
@@ -1560,6 +1587,8 @@ export function SidePanel({ sessionId, sessionPath, activeTab, onTabChange, widt
       : null
     const paneTerminalId = getTerminalIdFromSidePanelTab(paneTab)
     const paneTerminal = paneTerminalId ? terminalTabs.find((terminal) => terminal.terminalId === paneTerminalId) ?? null : null
+    const panePluginId = getPluginIdFromWorkspaceTab(paneTab)
+    const panePlugin = panePluginId ? installedPlugins.find((plugin) => plugin.id === panePluginId) ?? null : null
     // Files 的双来源布局必须由它所在 Pane 的真实宽度决定，而不是整个右侧工作区宽度。
     const showBothFileSources = shouldShowBothFileSources(paneWidth)
     const showSessionFiles = showBothFileSources || fileSourceFilter === 'session'
@@ -1618,6 +1647,18 @@ export function SidePanel({ sessionId, sessionPath, activeTab, onTabChange, widt
       >
         <AgentView sessionId={paneDelegationSession.id} embedded />
       </SideAgentSessionContent>
+    ) : panePluginId ? (
+      panePlugin ? (
+        <PluginUiFrame
+          plugin={panePlugin}
+          workspaceSlug={workspaceSlug}
+          workspaceId={currentWorkspaceId ?? null}
+        />
+      ) : (
+        <div className="flex flex-1 items-center justify-center text-xs text-muted-foreground">
+          插件未安装或已卸载，请重新安装后再打开。
+        </div>
+      )
     ) : paneTab === 'todos' ? (
       <PlanningView embedded componentTab="todos" />
     ) : paneTab === 'calendar' ? (

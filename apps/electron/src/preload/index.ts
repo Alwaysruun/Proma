@@ -6,7 +6,7 @@
  */
 
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
-import { IPC_CHANNELS, CHANNEL_IPC_CHANNELS, CHAT_IPC_CHANNELS, AGENT_IPC_CHANNELS, ENVIRONMENT_IPC_CHANNELS, INSTALLER_IPC_CHANNELS, PROXY_IPC_CHANNELS, GITHUB_RELEASE_IPC_CHANNELS, SYSTEM_PROMPT_IPC_CHANNELS, CHAT_TOOL_IPC_CHANNELS, FEISHU_IPC_CHANNELS, DINGTALK_IPC_CHANNELS, SLACK_IPC_CHANNELS, WECHAT_IPC_CHANNELS, AUTOMATION_IPC_CHANNELS, PLANNING_IPC_CHANNELS, VAULT_IPC_CHANNELS, AGENT_ISLAND_IPC_CHANNELS, TERMINAL_IPC_CHANNELS } from '@proma/shared'
+import { IPC_CHANNELS, CHANNEL_IPC_CHANNELS, CHAT_IPC_CHANNELS, AGENT_IPC_CHANNELS, ENVIRONMENT_IPC_CHANNELS, INSTALLER_IPC_CHANNELS, PROXY_IPC_CHANNELS, GITHUB_RELEASE_IPC_CHANNELS, SYSTEM_PROMPT_IPC_CHANNELS, CHAT_TOOL_IPC_CHANNELS, FEISHU_IPC_CHANNELS, DINGTALK_IPC_CHANNELS, SLACK_IPC_CHANNELS, WECHAT_IPC_CHANNELS, AUTOMATION_IPC_CHANNELS, PLANNING_IPC_CHANNELS, VAULT_IPC_CHANNELS, AGENT_ISLAND_IPC_CHANNELS, TERMINAL_IPC_CHANNELS, USAGE_HISTORY_IPC_CHANNEL } from '@proma/shared'
 import { USER_PROFILE_IPC_CHANNELS, SETTINGS_IPC_CHANNELS, SCRATCH_PAD_IPC_CHANNELS, APP_ICON_IPC_CHANNELS, DOCK_BADGE_IPC_CHANNELS, STORAGE_IPC_CHANNELS } from '../types'
 import type {
   RuntimeStatus,
@@ -66,9 +66,12 @@ import type {
   InstalledPromaPlugin,
   PluginInstallActionResult,
   PluginInstallOptions,
+  PluginInstallResult,
   PluginUninstallResult,
+  PromaMarketplacePlugin,
   PromaPluginSettingsSnapshot,
   SavePromaPluginSettingsInput,
+  UsageHistorySnapshot,
   FileEntry,
   FileSearchResult,
   EnvironmentCheckResult,
@@ -761,6 +764,21 @@ export interface ElectronAPI {
   /** 打开压缩包选择器并安装 Proma 插件 */
   installPluginFromZip: (workspaceSlug: string, options?: PluginInstallOptions) => Promise<PluginInstallActionResult>
 
+  /** 安装 Proma 自带插件（Todo / 日程） */
+  installBuiltinPlugin: (workspaceSlug: string, pluginId: string) => Promise<PluginInstallResult>
+
+  /** 列出插件市场中的可安装插件 */
+  listMarketplacePlugins: (workspaceSlug: string) => Promise<PromaMarketplacePlugin[]>
+
+  /** 从插件市场一键安装 */
+  installMarketplacePlugin: (workspaceSlug: string, pluginId: string) => Promise<PluginInstallResult>
+
+  /** 把已安装插件复制到用户市场目录 */
+  publishPluginToMarketplace: (workspaceSlug: string, pluginId: string) => Promise<string>
+
+  /** 打开用户插件市场目录 */
+  openMarketplaceFolder: () => Promise<void>
+
   /** 卸载 Proma 插件 */
   uninstallPlugin: (workspaceSlug: string, pluginId: string) => Promise<PluginUninstallResult>
 
@@ -779,6 +797,9 @@ export interface ElectronAPI {
     pluginId: string,
     input: SavePromaPluginSettingsInput,
   ) => Promise<PromaPluginSettingsSnapshot>
+
+  /** 读取本地会话聚合出的用量历史 */
+  getUsageHistory: () => Promise<UsageHistorySnapshot>
 
   /** 切换工作区 Skill 启用/禁用 */
   toggleWorkspaceSkill: (workspaceSlug: string, skillSlug: string, enabled: boolean) => Promise<void>
@@ -2160,6 +2181,26 @@ const electronAPI: ElectronAPI = {
     return ipcRenderer.invoke(AGENT_IPC_CHANNELS.INSTALL_PLUGIN_FROM_ZIP, workspaceSlug, options) as Promise<PluginInstallActionResult>
   },
 
+  installBuiltinPlugin: (workspaceSlug: string, pluginId: string) => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.INSTALL_BUILTIN_PLUGIN, workspaceSlug, pluginId) as Promise<PluginInstallResult>
+  },
+
+  listMarketplacePlugins: (workspaceSlug: string) => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.LIST_MARKETPLACE_PLUGINS, workspaceSlug) as Promise<PromaMarketplacePlugin[]>
+  },
+
+  installMarketplacePlugin: (workspaceSlug: string, pluginId: string) => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.INSTALL_MARKETPLACE_PLUGIN, workspaceSlug, pluginId) as Promise<PluginInstallResult>
+  },
+
+  publishPluginToMarketplace: (workspaceSlug: string, pluginId: string) => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.PUBLISH_PLUGIN_TO_MARKETPLACE, workspaceSlug, pluginId) as Promise<string>
+  },
+
+  openMarketplaceFolder: () => {
+    return ipcRenderer.invoke(AGENT_IPC_CHANNELS.OPEN_MARKETPLACE_FOLDER) as Promise<void>
+  },
+
   uninstallPlugin: (workspaceSlug: string, pluginId: string) => {
     return ipcRenderer.invoke(AGENT_IPC_CHANNELS.UNINSTALL_PLUGIN, workspaceSlug, pluginId) as Promise<PluginUninstallResult>
   },
@@ -2187,6 +2228,10 @@ const electronAPI: ElectronAPI = {
       pluginId,
       input,
     ) as Promise<PromaPluginSettingsSnapshot>
+  },
+
+  getUsageHistory: () => {
+    return ipcRenderer.invoke(USAGE_HISTORY_IPC_CHANNEL) as Promise<UsageHistorySnapshot>
   },
 
   toggleWorkspaceSkill: (workspaceSlug: string, skillSlug: string, enabled: boolean) => {

@@ -44,6 +44,7 @@ function isExpandedWorkspaceTab(tab: string | undefined): boolean {
     tab
     && (
       isWorkspaceComponentTab(tab)
+      || tab.startsWith('plugin:')
       || tab === 'browser'
       || tab === 'preview'
       || tab.startsWith('browser:')

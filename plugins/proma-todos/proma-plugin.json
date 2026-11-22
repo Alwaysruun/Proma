@@ -1,0 +1,16 @@
+{
+  "id": "proma-todos",
+  "name": "Todo",
+  "version": "1.0.0",
+  "description": "Proma 内置 Todo 插件：在左侧栏打开任务列表，与项目 Agent 共用本地 Planning 数据。",
+  "author": "Proma",
+  "ui": {
+    "entry": "ui/index.html",
+    "sidebar": {
+      "title": "Todo",
+      "icon": "list-todo",
+      "order": 10,
+      "replaces": "todos"
+    }
+  }
+}

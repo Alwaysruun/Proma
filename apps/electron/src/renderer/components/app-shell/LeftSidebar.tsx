@@ -11,7 +11,7 @@
 import * as React from 'react'
 import { useAtom, useSetAtom, useAtomValue, useStore } from 'jotai'
 import { toast } from 'sonner'
-import { Pin, PinOff, Star, Settings, Plus, CirclePlus, Trash2, Pencil, PanelLeft, PanelRight, ArrowRightLeft, Search, Archive, ArchiveRestore, ArrowLeft, Bot, MessageSquare, MoreHorizontal, FolderOpen, FolderInput, FolderPlus, Clock, CalendarDays, ChevronRight, ChevronDown, ChevronUp, ChevronsDownUp, Blocks, Brain, ListTodo, GitBranch, Download, Loader2, RotateCw, Info, Puzzle } from 'lucide-react'
+import { Pin, PinOff, Star, Settings, Plus, CirclePlus, Trash2, Pencil, PanelLeft, PanelRight, ArrowRightLeft, Search, Archive, ArchiveRestore, ArrowLeft, Bot, MessageSquare, MoreHorizontal, FolderOpen, FolderInput, FolderPlus, Clock, ChevronRight, ChevronDown, ChevronUp, ChevronsDownUp, Blocks, Brain, GitBranch, Download, Loader2, RotateCw, Info, Puzzle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import { ModeSwitcher } from './ModeSwitcher'
@@ -61,6 +61,7 @@ import {
   agentSidePanelSplitMapAtom,
   getDelegationSidePanelTab,
   openWorkspaceComponentAtom,
+  openWorkspaceComponentForSessionAtom,
   agentStreamingStatesAtom,
   liveMessagesMapAtom,
   agentSessionPendingFilesAtom,
@@ -75,7 +76,7 @@ import {
   sessionExistsAtom,
   automationGroupOrderAtom,
 } from '@/atoms/agent-atoms'
-import type { SessionIndicatorStatus, WorkspaceComponentTab } from '@/atoms/agent-atoms'
+import type { SessionIndicatorStatus, PluginWorkspaceTab, WorkspaceComponentTab } from '@/atoms/agent-atoms'
 import {
   previewPanelOpenMapAtom,
   previewFileMapAtom,
@@ -109,6 +110,7 @@ import { CollapsedWorkspacePopover } from '@/components/agent/CollapsedWorkspace
 import { CollapsedToolsPopover, type CollapsedToolItem } from '@/components/agent/CollapsedToolsPopover'
 import { CollapsedSessionRail, type RailRecentItem } from '@/components/agent/CollapsedSessionRail'
 import { ObsidianIcon } from '@/components/obsidian/obsidian-brand'
+import { getPluginIcon } from '@/components/plugins/plugin-icons'
 import { VirtualSidebarList, type VirtualSidebarRow } from '@/components/ui/virtual-sidebar-list'
 import { SidebarScrollBoundary } from '@/components/ui/sidebar-scroll-boundary'
 import { LocalProjectBadge } from '@/components/agent/LocalProjectBadge'
@@ -170,7 +172,7 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu'
-import type { ConversationMeta, AgentSessionMeta, AgentWorkspace, WorkspaceCapabilities } from '@proma/shared'
+import type { ConversationMeta, AgentSessionMeta, AgentWorkspace, InstalledPromaPlugin, WorkspaceCapabilities } from '@proma/shared'
 
 function formatAutomationCount(count: number): string {
   return count > 99 ? '99+' : String(count)
@@ -606,6 +608,7 @@ export function LeftSidebar({ width, noTransition }: LeftSidebarProps): React.Re
   const setPlanningTab = useSetAtom(planningTabAtom)
   const setAgentSkillsTab = useSetAtom(agentSkillsTabAtom)
   const openWorkspaceComponent = useSetAtom(openWorkspaceComponentAtom)
+  const openWorkspaceComponentForSession = useSetAtom(openWorkspaceComponentForSessionAtom)
   const automations = useAtomValue(automationsAtom)
   const setAutomations = useSetAtom(automationsAtom)
   const automationCount = automations.length
@@ -682,7 +685,7 @@ export function LeftSidebar({ width, noTransition }: LeftSidebarProps): React.Re
     ? sideDelegationMap.get(activeParentSessionId) ?? null
     : null
   const isWorkspaceComponentActive = React.useCallback(
-    (component: WorkspaceComponentTab): boolean => activeRightWorkspaceTab === component,
+    (component: WorkspaceComponentTab | PluginWorkspaceTab): boolean => activeRightWorkspaceTab === component,
     [activeRightWorkspaceTab],
   )
   const agentIndicatorMap = useAtomValue(agentSessionIndicatorMapAtom)
@@ -928,6 +931,48 @@ export function LeftSidebar({ width, noTransition }: LeftSidebarProps): React.Re
       .then(setCapabilities)
       .catch(console.error)
   }, [currentWorkspaceSlug, mode, activeView, capabilitiesVersion])
+
+  // 已安装插件的侧边栏入口；插件安装/卸载后随能力版本刷新。
+  const [installedPlugins, setInstalledPlugins] = React.useState<InstalledPromaPlugin[]>([])
+  React.useEffect(() => {
+    if (!currentWorkspaceSlug || mode !== 'agent') {
+      setInstalledPlugins([])
+      return
+    }
+    let cancelled = false
+    window.electronAPI.listWorkspacePlugins(currentWorkspaceSlug)
+      .then((plugins) => { if (!cancelled) setInstalledPlugins(plugins) })
+      .catch(() => { if (!cancelled) setInstalledPlugins([]) })
+    return () => { cancelled = true }
+  }, [currentWorkspaceSlug, mode, activeView, capabilitiesVersion])
+
+  interface PluginSidebarItem {
+    plugin: InstalledPromaPlugin
+    title: string
+    icon?: string
+    order: number
+    replaces?: 'todos' | 'calendar'
+  }
+
+  const pluginSidebarEntries = React.useMemo<PluginSidebarItem[]>(() => {
+    const entries: PluginSidebarItem[] = []
+    for (const plugin of installedPlugins) {
+      const sidebar = plugin.ui?.sidebar
+      if (!sidebar) continue
+      entries.push({
+        plugin,
+        title: sidebar.title,
+        ...(sidebar.icon ? { icon: sidebar.icon } : {}),
+        order: sidebar.order ?? 100,
+        ...(sidebar.replaces ? { replaces: sidebar.replaces } : {}),
+      })
+    }
+    return entries.sort((a, b) => a.order - b.order || a.plugin.name.localeCompare(b.plugin.name))
+  }, [installedPlugins])
+
+  const todoPluginEntry = pluginSidebarEntries.find((entry) => entry.replaces === 'todos')
+  const calendarPluginEntry = pluginSidebarEntries.find((entry) => entry.replaces === 'calendar')
+  const extraPluginEntries = pluginSidebarEntries.filter((entry) => !entry.replaces)
 
   /** 置顶对话列表（仅活跃模式显示，排除 draft） */
   const pinnedConversations = React.useMemo(
@@ -1285,7 +1330,7 @@ export function LeftSidebar({ width, noTransition }: LeftSidebarProps): React.Re
   }
 
   /** 在指定项目中创建 Agent 会话；未指定时使用当前项目 */
-  const createAgentSessionInWorkspace = React.useCallback(async (workspaceId?: string): Promise<void> => {
+  const createAgentSessionInWorkspace = React.useCallback(async (workspaceId?: string): Promise<string | null> => {
     try {
       const targetWorkspaceId = workspaceId ?? currentWorkspaceId ?? undefined
       if (targetWorkspaceId && targetWorkspaceId !== currentWorkspaceId) {
@@ -1320,10 +1365,22 @@ export function LeftSidebar({ width, noTransition }: LeftSidebarProps): React.Re
       // 打开新标签页
       openSession('agent', meta.id, meta.title)
       setActiveView('conversations')
+      return meta.id
     } catch (error) {
       console.error('[侧边栏] 创建 Agent 会话失败:', error)
+      return null
     }
   }, [agentChannelId, agentModelId, currentWorkspaceId, openSession, setActiveView, setAgentSessions, setCurrentWorkspaceId, setSessionChannelMap, setSessionModelMap])
+
+  /** 插件入口：还没有 Agent 会话时先创建任务，再在右侧工作区打开插件界面。 */
+  const handleOpenPluginComponent = React.useCallback(async (plugin: InstalledPromaPlugin): Promise<void> => {
+    if (mode !== 'agent') return
+    const sessionId = currentAgentSessionId ?? await createAgentSessionInWorkspace()
+    if (!sessionId) return
+    setActiveView('conversations')
+    const component = ('plugin:' + plugin.id) as PluginWorkspaceTab
+    openWorkspaceComponentForSession({ sessionId, component })
+  }, [createAgentSessionInWorkspace, currentAgentSessionId, mode, openWorkspaceComponentForSession, setActiveView])
 
   /** 切换当前项目；点击当前已选中工作区标题时则折叠/展开其会话列表 */
   const handleSelectProject = React.useCallback((workspaceId: string): void => {
@@ -3022,7 +3079,7 @@ export function LeftSidebar({ width, noTransition }: LeftSidebarProps): React.Re
               onShowMore={handleShowMoreSessions}
               onCollapseExtra={handleCollapseExtraSessions}
               onSelectProject={isAuto ? handleToggleGroupCollapse : handleSelectProject}
-              onNewSession={isAuto ? noopAsync : createAgentSessionInWorkspace}
+              onNewSession={isAuto ? noopAsync : async (workspaceId) => { await createAgentSessionInWorkspace(workspaceId) }}
               onDragStart={handleProjectDragStart}
               onDragOver={handleProjectDragOver}
               onDragLeave={handleProjectDragLeave}
@@ -3150,9 +3207,9 @@ export function LeftSidebar({ width, noTransition }: LeftSidebarProps): React.Re
 
   // ===== 折叠状态：精简图标视图 =====
   if (sidebarCollapsed) {
-    const hasActiveCollapsedTool = [
-      ...(productivityTools.todosEnabled ? ["todos"] : []),
-      ...(productivityTools.calendarEnabled ? ["calendar"] : []),
+    const hasActiveCollapsedTool = pluginSidebarEntries.some((entry) =>
+      isWorkspaceComponentActive(("plugin:" + entry.plugin.id) as PluginWorkspaceTab),
+    ) || [
       "automations",
       "skills",
       "mcp",
@@ -3163,18 +3220,24 @@ export function LeftSidebar({ width, noTransition }: LeftSidebarProps): React.Re
     );
 
     const collapsedToolItems: CollapsedToolItem[] = [
-      ...(productivityTools.todosEnabled ? [{
-        label: "Todo",
-        icon: <ListTodo size={16} />,
-        active: isWorkspaceComponentActive("todos"),
-        onClick: () => handleOpenPlanningComponent("todos"),
+      ...(productivityTools.todosEnabled && todoPluginEntry ? [{
+        label: todoPluginEntry.title,
+        icon: getPluginIcon(todoPluginEntry.icon, 16),
+        active: isWorkspaceComponentActive(("plugin:" + todoPluginEntry.plugin.id) as PluginWorkspaceTab),
+        onClick: () => { void handleOpenPluginComponent(todoPluginEntry.plugin) },
       }] : []),
-      ...(productivityTools.calendarEnabled ? [{
-        label: "日程",
-        icon: <CalendarDays size={16} />,
-        active: isWorkspaceComponentActive("calendar"),
-        onClick: () => handleOpenPlanningComponent("calendar"),
+      ...(productivityTools.calendarEnabled && calendarPluginEntry ? [{
+        label: calendarPluginEntry.title,
+        icon: getPluginIcon(calendarPluginEntry.icon, 16),
+        active: isWorkspaceComponentActive(("plugin:" + calendarPluginEntry.plugin.id) as PluginWorkspaceTab),
+        onClick: () => { void handleOpenPluginComponent(calendarPluginEntry.plugin) },
       }] : []),
+      ...extraPluginEntries.map((entry) => ({
+        label: entry.title,
+        icon: getPluginIcon(entry.icon, 16),
+        active: isWorkspaceComponentActive(("plugin:" + entry.plugin.id) as PluginWorkspaceTab),
+        onClick: () => { void handleOpenPluginComponent(entry.plugin) },
+      })),
       ...(productivityTools.obsidianEnabled ? [{
         label: "Obsidian",
         icon: <ObsidianIcon size={16} />,
@@ -3540,22 +3603,31 @@ export function LeftSidebar({ width, noTransition }: LeftSidebarProps): React.Re
 
       {/* 项目级组件：每一行直接打开对应的右侧工作区 Tab。 */}
       <div className="space-y-0.5 px-3 pb-0.5 pt-2">
-        {productivityTools.todosEnabled && (
+        {productivityTools.todosEnabled && todoPluginEntry && (
           <WorkspaceComponentSidebarEntry
-            label="Todo"
-            icon={<ListTodo size={16} />}
-            active={isWorkspaceComponentActive('todos')}
-            onClick={() => handleOpenPlanningComponent('todos')}
+            label={todoPluginEntry.title}
+            icon={getPluginIcon(todoPluginEntry.icon, 16)}
+            active={isWorkspaceComponentActive(('plugin:' + todoPluginEntry.plugin.id) as PluginWorkspaceTab)}
+            onClick={() => { void handleOpenPluginComponent(todoPluginEntry.plugin) }}
           />
         )}
-        {productivityTools.calendarEnabled && (
+        {productivityTools.calendarEnabled && calendarPluginEntry && (
           <WorkspaceComponentSidebarEntry
-            label="日程"
-            icon={<CalendarDays size={16} />}
-            active={isWorkspaceComponentActive('calendar')}
-            onClick={() => handleOpenPlanningComponent('calendar')}
+            label={calendarPluginEntry.title}
+            icon={getPluginIcon(calendarPluginEntry.icon, 16)}
+            active={isWorkspaceComponentActive(('plugin:' + calendarPluginEntry.plugin.id) as PluginWorkspaceTab)}
+            onClick={() => { void handleOpenPluginComponent(calendarPluginEntry.plugin) }}
           />
         )}
+        {extraPluginEntries.map((entry) => (
+          <WorkspaceComponentSidebarEntry
+            key={entry.plugin.id}
+            label={entry.title}
+            icon={getPluginIcon(entry.icon, 16)}
+            active={isWorkspaceComponentActive(('plugin:' + entry.plugin.id) as PluginWorkspaceTab)}
+            onClick={() => { void handleOpenPluginComponent(entry.plugin) }}
+          />
+        ))}
         {productivityTools.obsidianEnabled && (
           <WorkspaceComponentSidebarEntry
             label="Obsidian"

@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>日程</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <div class="app">
+    <header class="header">
+      <div>
+        <h1>日程</h1>
+        <p id="subtitle" class="subtitle">加载中…</p>
+      </div>
+      <div class="toolbar">
+        <div class="view-tabs" role="tablist" aria-label="视图">
+          <button type="button" class="view-tab is-active" data-view="month">月</button>
+          <button type="button" class="view-tab" data-view="agenda">列表</button>
+        </div>
+        <button id="prev" type="button" class="icon-button" aria-label="上个月">‹</button>
+        <button id="today" type="button" class="secondary">今天</button>
+        <button id="next" type="button" class="icon-button" aria-label="下个月">›</button>
+        <button id="add" type="button" class="primary">＋ 新建</button>
+      </div>
+    </header>
+
+    <div id="month-view" class="month-view">
+      <div class="weekdays">
+        <span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span>
+      </div>
+      <div id="grid" class="grid"></div>
+    </div>
+
+    <div id="agenda-view" class="agenda-view" hidden>
+      <div id="agenda" class="agenda"></div>
+      <div id="agenda-empty" class="empty" hidden>
+        <div class="empty-title">这个月还没有日程</div>
+        <div class="empty-hint">点击右上角“新建”，或由 Agent 帮你安排。</div>
+      </div>
+    </div>
+  </div>
+
+  <div id="editor-backdrop" class="editor-backdrop" hidden></div>
+  <aside id="editor" class="editor" hidden>
+    <div class="editor-head">
+      <div>
+        <div class="detail-kicker">日程详情</div>
+        <div id="editor-mode" class="editor-mode">新建日程</div>
+      </div>
+      <button id="editor-close" type="button" class="icon-button" aria-label="关闭">×</button>
+    </div>
+    <label class="field">
+      <span>标题</span>
+      <input id="event-title" class="input" type="text" maxlength="500" placeholder="例如：插件开发评审">
+    </label>
+    <label class="check-field">
+      <input id="event-allday" type="checkbox">
+      <span>全天</span>
+    </label>
+    <div class="field-row">
+      <label class="field">
+        <span>开始</span>
+        <input id="event-start" class="input" type="datetime-local">
+      </label>
+      <label class="field">
+        <span>结束</span>
+        <input id="event-end" class="input" type="datetime-local">
+      </label>
+    </div>
+    <label class="field">
+      <span>分组</span>
+      <select id="event-group" class="input"></select>
+    </label>
+    <label class="field">
+      <span>备注</span>
+      <textarea id="event-notes" class="input textarea" rows="4" placeholder="补充说明…"></textarea>
+    </label>
+    <div class="editor-actions">
+      <button id="event-save" type="button" class="primary">保存</button>
+      <button id="event-delete" type="button" class="danger" hidden>删除</button>
+    </div>
+  </aside>
+
+  <script src="/__proma__/bridge.js"></script>
+  <script src="./app.js"></script>
+</body>
+</html>

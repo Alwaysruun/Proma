@@ -4,7 +4,8 @@ import { BellRing, Check, ListTodo, X } from 'lucide-react'
 import { toast } from 'sonner'
 import type { ActivePlanningReminder } from '@proma/shared'
 import { activePlanningRemindersAtom, planningSelectedTodoIdAtom } from '@/atoms/planning-atoms'
-import { openWorkspaceComponentAtom } from '@/atoms/agent-atoms'
+import { agentWorkspacesAtom, currentAgentWorkspaceIdAtom, openWorkspaceComponentAtom } from '@/atoms/agent-atoms'
+import type { PluginWorkspaceTab } from '@/atoms/agent-atoms'
 import { notificationsEnabledAtom, notificationSoundEnabledAtom, notificationSoundsAtom, playNotificationSoundForType } from '@/atoms/notifications'
 import { Button } from '@/components/ui/button'
 
@@ -24,6 +25,12 @@ function mergeReminders(current: ActivePlanningReminder[], incoming: ActivePlann
 export function PlanningReminderRail({ playSound = true }: { playSound?: boolean } = {}): React.ReactElement | null {
   const [reminders, setReminders] = useAtom(activePlanningRemindersAtom)
   const openWorkspaceComponent = useSetAtom(openWorkspaceComponentAtom)
+  const currentWorkspaceId = useAtomValue(currentAgentWorkspaceIdAtom)
+  const agentWorkspaces = useAtomValue(agentWorkspacesAtom)
+  const workspaceSlug = React.useMemo(
+    () => agentWorkspaces.find((workspace) => workspace.id === currentWorkspaceId)?.slug ?? null,
+    [agentWorkspaces, currentWorkspaceId],
+  )
   const setSelectedTodoId = useSetAtom(planningSelectedTodoIdAtom)
   const notificationsEnabled = useAtomValue(notificationsEnabledAtom)
   const soundEnabled = useAtomValue(notificationSoundEnabledAtom)
@@ -67,9 +74,23 @@ export function PlanningReminderRail({ playSound = true }: { playSound?: boolean
       toast.error('完成 Todo 失败')
     }
   }
-  const openTodo = (reminder: ActivePlanningReminder): void => {
-    setSelectedTodoId(reminder.targetId)
-    openWorkspaceComponent(reminder.targetType === 'todo' ? 'todos' : 'calendar')
+  const openTodo = async (reminder: ActivePlanningReminder): Promise<void> => {
+    const pluginId = reminder.targetType === 'todo' ? 'proma-todos' : 'proma-calendar'
+    if (workspaceSlug) {
+      try {
+        const plugins = await window.electronAPI.listWorkspacePlugins(workspaceSlug)
+        if (plugins.some((plugin) => plugin.id === pluginId && plugin.ui)) {
+          setSelectedTodoId(reminder.targetId)
+          openWorkspaceComponent(('plugin:' + pluginId) as PluginWorkspaceTab)
+          return
+        }
+      } catch (error) {
+        console.error('[任务/日程] 检查插件失败:', error)
+      }
+    }
+    toast.info(reminder.targetType === 'todo' ? 'Todo 插件未安装' : '日程插件未安装', {
+      description: '可在左侧栏“插件”中重新安装。',
+    })
   }
   const snooze = async (id: string, minutes: number) => {
     try {
@@ -107,7 +128,7 @@ export function PlanningReminderRail({ playSound = true }: { playSound?: boolean
             <div className="flex flex-wrap items-center gap-1 bg-muted/20 px-3 py-2">
               {reminder.targetType === 'todo' && (
                 <>
-                  <Button variant="secondary" size="sm" className="h-7" onClick={() => openTodo(reminder)}>
+                  <Button variant="secondary" size="sm" className="h-7" onClick={() => void openTodo(reminder)}>
                     <ListTodo className="mr-1 h-3.5 w-3.5" />查看 Todo
                   </Button>
                   <Button variant="secondary" size="sm" className="h-7" onClick={() => void completeTodo(reminder)}>

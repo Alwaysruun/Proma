@@ -63,6 +63,9 @@ export * from './automation'
 // 本地任务与日程（Planning）相关类型
 export * from './planning'
 
+// 本地 Agent 用量历史
+export * from './usage-history'
+
 // Agent 灵动岛相关类型
 export * from './agent-island'
 

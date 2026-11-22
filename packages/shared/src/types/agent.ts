@@ -1304,6 +1304,44 @@ export interface PromaPluginSettingsSchema {
   fields: PromaPluginSettingField[]
 }
 
+/** Proma 自带、可随时卸载和重新安装的 UI 插件。 */
+export interface BuiltinPromaPluginInfo {
+  id: string
+  name: string
+  description: string
+}
+
+export const BUILTIN_PROMA_PLUGINS: readonly BuiltinPromaPluginInfo[] = [
+  {
+    id: 'proma-todos',
+    name: 'Todo',
+    description: '在左侧栏显示 Todo 列表，与 Agent 共用本地任务数据。',
+  },
+  {
+    id: 'proma-calendar',
+    name: '日程',
+    description: '在左侧栏显示日程月视图和列表，与 Agent 共用本地日程数据。',
+  },
+]
+
+/** 插件提供的 UI 侧边栏入口。 */
+export interface PromaPluginSidebarEntry {
+  /** 侧边栏显示名称 */
+  title: string
+  /** lucide 图标名，默认为 puzzle */
+  icon?: string
+  /** 排序，数字越小越靠前 */
+  order?: number
+  /** 替换内置入口；插件未安装时 Proma 仍保留内置视图 */
+  replaces?: 'todos' | 'calendar'
+}
+
+/** 插件提供的可视化界面；入口为相对插件根目录的 HTML 文件。 */
+export interface PromaPluginUiSchema {
+  entry: string
+  sidebar?: PromaPluginSidebarEntry
+}
+
 /** Proma 插件清单（proma-plugin.json） */
 export interface PromaPluginManifest {
   id: string
@@ -1318,6 +1356,8 @@ export interface PromaPluginManifest {
   mcpServers?: Record<string, PromaPluginMcpServer>
   /** 插件配置界面与运行时环境变量映射 */
   settings?: PromaPluginSettingsSchema
+  /** 插件界面与侧边栏入口 */
+  ui?: PromaPluginUiSchema
 }
 
 /** 插件清单中的 MCP 服务器定义，安装时会规范化为 McpServerEntry */
@@ -1350,6 +1390,8 @@ export interface InstalledPromaPlugin {
   mcpServers: string[]
   /** 从插件清单读取的配置项；空表示插件没有配置界面 */
   settings?: PromaPluginSettingsSchema
+  /** 插件界面与侧边栏入口 */
+  ui?: PromaPluginUiSchema
   skillFingerprints: Record<string, string>
   mcpServerFingerprints: Record<string, string>
 }
@@ -1384,6 +1426,27 @@ export interface PluginUninstallResult {
   keptSkills: string[]
   removedMcpServers: string[]
   keptMcpServers: string[]
+}
+
+/** 插件市场中可一键安装的插件来源。 */
+export interface PromaMarketplacePlugin {
+  id: string
+  name: string
+  version: string
+  description?: string
+  author?: string
+  homepage?: string
+  /** 插件文件夹或 zip 的绝对路径；卸载插件不会删除这里。 */
+  source: string
+  sourceType: 'folder' | 'zip'
+  /** 来源：Proma 内置、仓库 plugins/ 或用户市场目录。 */
+  origin: 'builtin' | 'project' | 'marketplace'
+  builtin: boolean
+  /** 当前工作区已安装的版本；未安装为 null。 */
+  installedVersion: string | null
+  skillCount: number
+  mcpServerCount: number
+  hasUi: boolean
 }
 
 export type PluginInstallActionResult =
@@ -2081,6 +2144,16 @@ export const AGENT_IPC_CHANNELS = {
   OPEN_PLUGIN_FOLDER: 'agent:open-plugin-folder',
   /** 创建插件模板并返回目录 */
   CREATE_PLUGIN_TEMPLATE: 'agent:create-plugin-template',
+  /** 安装 Proma 自带插件（Todo / 日程） */
+  INSTALL_BUILTIN_PLUGIN: 'agent:install-builtin-plugin',
+  /** 列出插件市场中的可安装插件 */
+  LIST_MARKETPLACE_PLUGINS: 'agent:list-marketplace-plugins',
+  /** 从插件市场一键安装 */
+  INSTALL_MARKETPLACE_PLUGIN: 'agent:install-marketplace-plugin',
+  /** 把已安装插件复制到用户市场目录 */
+  PUBLISH_PLUGIN_TO_MARKETPLACE: 'agent:publish-plugin-to-marketplace',
+  /** 打开用户插件市场目录 */
+  OPEN_MARKETPLACE_FOLDER: 'agent:open-marketplace-folder',
   /** 读取插件配置界面 schema 与当前值（密钥不返回明文） */
   GET_PLUGIN_SETTINGS: 'agent:get-plugin-settings',
   /** 保存插件配置；密钥使用系统安全存储加密 */

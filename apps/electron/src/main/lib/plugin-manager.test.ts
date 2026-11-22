@@ -1,8 +1,9 @@
+import AdmZip from 'adm-zip'
 import { describe, expect, test } from 'bun:test'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { readManifest } from './plugin-manager'
+import { readManifest, readMarketplaceFolder, readMarketplaceZip, resolveBuiltinPluginSource } from './plugin-manager'
 
 function createManifestDir(manifest: unknown): string {
   const dir = mkdtempSync(join(tmpdir(), 'proma-plugin-manifest-'))
@@ -109,6 +110,140 @@ describe('Proma 插件清单', () => {
     })
     try {
       expect(() => readManifest(dir)).toThrow()
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  test('解析插件 UI 与侧边栏入口', () => {
+    const dir = createManifestDir({
+      id: 'proma-todos',
+      name: 'Todo',
+      version: '1.0.0',
+      ui: {
+        entry: 'ui/index.html',
+        sidebar: { title: 'Todo', icon: 'list-todo', order: 10, replaces: 'todos' },
+      },
+    })
+    try {
+      mkdirSync(join(dir, 'ui'), { recursive: true })
+      writeFileSync(join(dir, 'ui', 'index.html'), '<!doctype html>')
+      const manifest = readManifest(dir)
+      expect(manifest.ui?.entry).toBe('ui/index.html')
+      expect(manifest.ui?.sidebar?.replaces).toBe('todos')
+      expect(manifest.ui?.sidebar?.icon).toBe('list-todo')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  test('拒绝不存在的 UI 入口', () => {
+    const dir = createManifestDir({
+      id: 'my-plugin',
+      name: 'My Plugin',
+      version: '1.0.0',
+      ui: { entry: 'ui/missing.html' },
+    })
+    try {
+      expect(() => readManifest(dir)).toThrow()
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  test('拒绝越界或非法的 UI 入口', () => {
+    const dir = createManifestDir({
+      id: 'my-plugin',
+      name: 'My Plugin',
+      version: '1.0.0',
+      ui: { entry: '../index.html' },
+    })
+    try {
+      expect(() => readManifest(dir)).toThrow()
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  test('拒绝非法的 replaces 值', () => {
+    const dir = createManifestDir({
+      id: 'my-plugin',
+      name: 'My Plugin',
+      version: '1.0.0',
+      ui: { entry: 'ui/index.html', sidebar: { title: 'Bad', replaces: 'settings' } },
+    })
+    try {
+      mkdirSync(join(dir, 'ui'), { recursive: true })
+      writeFileSync(join(dir, 'ui', 'index.html'), '<!doctype html>')
+      expect(() => readManifest(dir)).toThrow()
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  test('解析内置 Todo / 日程插件源目录', () => {
+    const todoSource = resolveBuiltinPluginSource('proma-todos')
+    expect(todoSource).toBeTruthy()
+    expect(existsSync(join(todoSource!, 'proma-plugin.json'))).toBe(true)
+
+    const calendarSource = resolveBuiltinPluginSource('proma-calendar')
+    expect(calendarSource).toBeTruthy()
+    expect(existsSync(join(calendarSource!, 'proma-plugin.json'))).toBe(true)
+
+    expect(resolveBuiltinPluginSource('proma-web-search')).toBeNull()
+  })
+
+  test('解析插件市场文件夹信息', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'proma-marketplace-plugin-'))
+    try {
+      writeFileSync(join(dir, 'proma-plugin.json'), JSON.stringify({
+        id: 'market-plugin',
+        name: 'Market Plugin',
+        version: '1.2.3',
+        description: 'market test',
+        author: 'tester',
+      }))
+      mkdirSync(join(dir, 'skills', 'demo'), { recursive: true })
+      writeFileSync(join(dir, 'skills', 'demo', 'SKILL.md'), '# demo')
+      writeFileSync(join(dir, 'mcp.json'), JSON.stringify({
+        servers: { demo: { command: 'node', args: ['server.js'] } },
+      }))
+
+      const item = readMarketplaceFolder(dir, 'marketplace')
+      expect(item?.id).toBe('market-plugin')
+      expect(item?.version).toBe('1.2.3')
+      expect(item?.sourceType).toBe('folder')
+      expect(item?.origin).toBe('marketplace')
+      expect(item?.skillCount).toBe(1)
+      expect(item?.mcpServerCount).toBe(1)
+      expect(item?.installedVersion).toBeNull()
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  test('解析插件市场 zip 信息', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'proma-marketplace-zip-'))
+    try {
+      const zipPath = join(dir, 'market-plugin.zip')
+      const zip = new AdmZip()
+      zip.addFile('proma-plugin.json', Buffer.from(JSON.stringify({
+        id: 'zip-plugin',
+        name: 'Zip Plugin',
+        version: '2.0.0',
+      })))
+      zip.addFile('skills/demo/SKILL.md', Buffer.from('# demo'))
+      zip.addFile('mcp.json', Buffer.from(JSON.stringify({
+        servers: { demo: { command: 'node', args: ['server.js'] } },
+      })))
+      zip.writeZip(zipPath)
+
+      const item = readMarketplaceZip(zipPath, 'marketplace')
+      expect(item?.id).toBe('zip-plugin')
+      expect(item?.version).toBe('2.0.0')
+      expect(item?.sourceType).toBe('zip')
+      expect(item?.skillCount).toBe(1)
+      expect(item?.mcpServerCount).toBe(1)
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }

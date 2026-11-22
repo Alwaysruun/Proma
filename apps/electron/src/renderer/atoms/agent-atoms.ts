@@ -15,6 +15,7 @@ import { calculateDockBadgeCount, countPendingRequests } from '@/lib/dock-badge-
 import type { AgentQueuedMessage } from '@/lib/agent-message-queue'
 import type { SessionFileChange } from '@/lib/session-file-changes'
 import type { RightWorkspaceSplitState } from '@/lib/right-workspace-split'
+import { removePluginTabFromOpenMap, resetPluginActiveTabs } from '@/lib/plugin-tab-cleanup'
 
 /** 活动状态 */
 export type ActivityStatus = 'pending' | 'running' | 'completed' | 'error' | 'backgrounded'
@@ -701,7 +702,31 @@ export function getDelegationTabLabel(title: string | null | undefined): string 
   return title?.trim() || '委派任务'
 }
 
-export type AgentSidePanelBaseTab = 'files' | 'changes' | 'chat' | 'temporary-agent' | 'delegation' | WorkspaceComponentTab
+/** 插件 UI 以 plugin:<id> 的形式加入右侧工作区。 */
+export type PluginWorkspaceTab = `plugin:${string}`
+export type AgentWorkspaceTab = WorkspaceComponentTab | PluginWorkspaceTab
+
+const PLUGIN_TAB_ID_RE = /^[a-z0-9][a-z0-9._-]{0,63}$/
+
+export function isPluginWorkspaceTab(tab: string): tab is PluginWorkspaceTab {
+  if (!tab.startsWith('plugin:')) return false
+  return PLUGIN_TAB_ID_RE.test(tab.slice('plugin:'.length))
+}
+
+export function getPluginIdFromWorkspaceTab(tab: PluginWorkspaceTab | string): string | null {
+  return isPluginWorkspaceTab(tab) ? tab.slice('plugin:'.length) : null
+}
+
+export function isAgentWorkspaceTab(tab: string): tab is AgentWorkspaceTab {
+  return isWorkspaceComponentTab(tab) || isPluginWorkspaceTab(tab)
+}
+
+/** 过滤旧版本或异常持久化数据，保留内置组件与合法插件 Tab。 */
+export function sanitizeAgentWorkspaceTabs(tabs: readonly string[]): AgentWorkspaceTab[] {
+  return tabs.filter(isAgentWorkspaceTab)
+}
+
+export type AgentSidePanelBaseTab = 'files' | 'changes' | 'chat' | 'temporary-agent' | 'delegation' | AgentWorkspaceTab
 /** 工作区组件、每个 Pi 探索分支、协作子 Agent、浏览器网页和文件预览都处于右侧工作区顶栏。 */
 export type AgentSidePanelTab = AgentSidePanelBaseTab | `exploration:${string}` | `browser:${string}` | `preview:${string}` | `terminal:${string}`
 
@@ -801,7 +826,7 @@ export const currentSessionSidePanelOpenAtom = atom(
  * 项目级能力的右侧 Tab 打开状态按 Agent session 持久化。能力的数据仍归属于 workspace，
  * 但同一 workspace 的后台会话不得改变彼此的右侧 Tab，避免抢走用户焦点。
  */
-export const agentSessionComponentOpenMapAtom = atomWithStorage<Record<string, WorkspaceComponentTab[]>>(
+export const agentSessionComponentOpenMapAtom = atomWithStorage<Record<string, AgentWorkspaceTab[]>>(
   'proma-agent-session-component-tabs',
   {},
   undefined,
@@ -810,7 +835,7 @@ export const agentSessionComponentOpenMapAtom = atomWithStorage<Record<string, W
 
 export const agentSessionComponentTabsAtomFamily = atomFamily((sessionId: string) => atom(
   (get) => get(agentSessionComponentOpenMapAtom)[sessionId] ?? [],
-  (_get, set, update: WorkspaceComponentTab[] | ((previous: WorkspaceComponentTab[]) => WorkspaceComponentTab[])) => {
+  (_get, set, update: AgentWorkspaceTab[] | ((previous: AgentWorkspaceTab[]) => AgentWorkspaceTab[])) => {
     set(agentSessionComponentOpenMapAtom, (previous) => {
       const current = previous[sessionId] ?? []
       const next = typeof update === 'function' ? update(current) : update
@@ -847,9 +872,17 @@ export const skillDetailNavigationAtomFamily = atomFamily((sessionId: string) =>
 /** 在当前 Agent 会话中打开并聚焦一个项目级组件。 */
 export const openWorkspaceComponentAtom = atom(
   null,
-  (get, set, component: WorkspaceComponentTab) => {
+  (get, set, component: AgentWorkspaceTab) => {
     const sessionId = get(currentAgentSessionIdAtom)
     if (!sessionId) return
+    set(openWorkspaceComponentForSessionAtom, { sessionId, component })
+  },
+)
+
+/** 为指定会话打开项目级组件；供侧边栏在刚创建会话后直接打开插件界面。 */
+export const openWorkspaceComponentForSessionAtom = atom(
+  null,
+  (get, set, { sessionId, component }: { sessionId: string; component: AgentWorkspaceTab }) => {
     set(agentSessionComponentTabsAtomFamily(sessionId), (previous) => (
       previous.includes(component) ? previous : [...previous, component]
     ))
@@ -896,7 +929,7 @@ export const revealChangedWorkspaceComponentAtom = atom(
 /** 关闭当前 session 的一个组件；若它正被当前会话查看，回退到文件。 */
 export const closeWorkspaceComponentAtom = atom(
   null,
-  (get, set, component: WorkspaceComponentTab) => {
+  (get, set, component: AgentWorkspaceTab) => {
     const sessionId = get(currentAgentSessionIdAtom)
     if (!sessionId) return
     set(agentSessionComponentTabsAtomFamily(sessionId), (previous) => previous.filter((item) => item !== component))
@@ -906,6 +939,21 @@ export const closeWorkspaceComponentAtom = atom(
       next.set(sessionId, 'files')
       return next
     })
+  },
+)
+
+/**
+ * 卸载插件后清理所有会话中的 plugin:<id> Tab。
+ * 插件 Tab 已不可用，继续保留会让用户点进空白页面；活动 Tab 回退到文件。
+ */
+export const removePluginWorkspaceTabsAtom = atom(
+  null,
+  (get, set, pluginId: string) => {
+    if (!PLUGIN_TAB_ID_RE.test(pluginId)) return
+    const target = ('plugin:' + pluginId) as PluginWorkspaceTab
+
+    set(agentSessionComponentOpenMapAtom, (previous) => removePluginTabFromOpenMap(previous, target))
+    set(agentDiffPanelTabAtom, (previous) => resetPluginActiveTabs(previous, target))
   },
 )
 

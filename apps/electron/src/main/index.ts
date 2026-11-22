@@ -35,6 +35,7 @@ function registerProtocolsAndHandlers(): void {
   // 用于内联预览本地文件（renderer 用 iframe 加载 proma-file:// 资源）
   protocol.registerSchemesAsPrivileged([
     { scheme: 'proma-file', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true } },
+    { scheme: 'proma-plugin', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true } },
   ])
 
   // Windows: 禁用 LCD 次像素抗锯齿（ClearType），改用灰度 AA。
@@ -53,6 +54,7 @@ function registerProtocolsAndHandlers(): void {
 
 import { getSettings, updateSettings } from './lib/settings-service'
 import { handlePromaFileRequest } from './lib/local-file-protocol'
+import { handlePluginUiRequest } from './lib/plugin-ui-protocol'
 
 // 处理 EPIPE 错误：当 stdout/stderr 管道被关闭时（如 electronmon 重启），忽略写入错误
 // 这在开发环境热重载时经常发生，不影响应用功能
@@ -726,6 +728,8 @@ async function bootstrap(): Promise<void> {
   // 注册自定义协议 proma-file:// 用于内联预览本地文件。
   // 协议只接受主进程签发的 opaque token，不解析 renderer 提供的绝对路径。
   protocol.handle('proma-file', handlePromaFileRequest)
+  // 注册 proma-plugin:// 用于加载已安装插件的 HTML/JS/CSS 界面。
+  protocol.handle('proma-plugin', handlePluginUiRequest)
 
   // 初始化运行时环境。Node.js 仅由 npx / npm 型 MCP 在实际连接时使用，
   // 或由用户从设置手动检测；启动时不应将其作为 Agent 的前置要求。

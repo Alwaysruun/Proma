@@ -6,7 +6,7 @@
 
 import * as React from 'react'
 import { useAtomValue, useSetAtom } from 'jotai'
-import { Blocks, Brain, CalendarDays, Clock, Columns2, FolderOpen, Globe, ListTodo, MessageCircle, PanelRight, Plus, Repeat2, ServerCog, SquareTerminal, X } from 'lucide-react'
+import { Blocks, Brain, Clock, Columns2, FolderOpen, Globe, MessageCircle, PanelRight, Plus, Puzzle, Repeat2, ServerCog, SquareTerminal, X } from 'lucide-react'
 import { OBSIDIAN_NAME, ObsidianIcon } from '@/components/obsidian/obsidian-brand'
 import { cn } from '@/lib/utils'
 import { getScrollLeftToRevealTab } from '@/lib/tab-visibility'
@@ -492,18 +492,6 @@ export function DiffPanelTabBar({
             {onOpenWorkspaceComponent && (
               <>
                 <DropdownMenuSeparator />
-                {productivityTools.todosEnabled && (
-                  <DropdownMenuItem onSelect={() => onOpenWorkspaceComponent('todos')}>
-                    <ListTodo className="size-3.5" />
-                    打开 Todo
-                  </DropdownMenuItem>
-                )}
-                {productivityTools.calendarEnabled && (
-                  <DropdownMenuItem onSelect={() => onOpenWorkspaceComponent('calendar')}>
-                    <CalendarDays className="size-3.5" />
-                    打开日程
-                  </DropdownMenuItem>
-                )}
                 <DropdownMenuItem onSelect={() => onOpenWorkspaceComponent('skills')}>
                   <Blocks className="size-3.5" />
                   打开 Skills
@@ -511,6 +499,10 @@ export function DiffPanelTabBar({
                 <DropdownMenuItem onSelect={() => onOpenWorkspaceComponent('mcp')}>
                   <ServerCog className="size-3.5" />
                   打开 MCP
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => onOpenWorkspaceComponent('plugins')}>
+                  <Puzzle className="size-3.5" />
+                  打开插件
                 </DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => onOpenWorkspaceComponent('memory')}>
                   <Brain className="size-3.5" />

@@ -297,13 +297,13 @@ export function GeneralSettings(): React.ReactElement {
           </SettingsRow>
           <SettingsToggle
             label="Todo"
-            description="显示 Todo 入口，并允许 Agent 使用 Todo 相关工具"
+            description="显示已安装的 Todo 插件入口；Agent 仍可读写本地任务数据"
             checked={productivityTools.todosEnabled}
             onCheckedChange={(checked) => { void handleProductivityToolsChange({ todosEnabled: checked }) }}
           />
           <SettingsToggle
             label="日程"
-            description="显示日程入口，并允许 Agent 使用日程相关工具"
+            description="显示已安装的日程插件入口；Agent 仍可读写本地日程数据"
             checked={productivityTools.calendarEnabled}
             onCheckedChange={(checked) => { void handleProductivityToolsChange({ calendarEnabled: checked }) }}
           />
