@@ -6,8 +6,8 @@
  *
  * 包含：
  * - Message — 根容器，`from` 属性区分 user/assistant
- * - MessageHeader — 头像 + 模型名
  * - MessageContent — 内容区域
+ * - MessageTime — 消息末尾时间
  * - MessageActions — 操作按钮容器
  * - MessageAction — 单个操作按钮（可选 Tooltip）
  * - MessageResponse — react-markdown 渲染
@@ -45,7 +45,7 @@ import { createMentionPattern } from '@/lib/mention-patterns'
 import { resolveSkillMentionName } from '@/lib/skill-mention-name'
 import { useSkillMentionNames } from '@/components/agent/SkillMentionNamesProvider'
 import { useAgentBrowserLink } from '@/components/browser/AgentBrowserLinkProvider'
-import type { HTMLAttributes, ComponentProps, ReactNode } from 'react'
+import type { HTMLAttributes, ComponentProps } from 'react'
 import type { FileAttachment } from '@proma/shared'
 import type { QuotedSelection } from '@/atoms/preview-atoms'
 
@@ -72,57 +72,14 @@ export function Message({ className, from, ...props }: MessageProps): React.Reac
   )
 }
 
-// ===== MessageHeader 头像 + 模型名 =====
-
-interface MessageHeaderProps extends HTMLAttributes<HTMLDivElement> {
-  /** 模型名称 */
-  model?: string
-  /** 头像元素 */
-  logo?: ReactNode
-  /** 消息时间戳 */
-  time?: string
-}
-
-/** 消息头部（user 时自动隐藏） */
-export function MessageHeader({
-  model,
-  logo,
-  time,
-  className,
-  children,
-  ...props
-}: MessageHeaderProps): React.ReactElement {
-  return (
-    <div
-      className={cn(
-        'flex items-start gap-2.5 mb-2.5',
-        'group-[.is-user]:hidden',
-        className
-      )}
-      {...props}
-    >
-      {logo && (
-        <div className="flex size-[35px] shrink-0 items-center justify-center overflow-hidden rounded-[25%]">
-          {logo}
-        </div>
-      )}
-      <div className="flex flex-col justify-between h-[35px]">
-        {model && <span className="text-sm font-semibold text-foreground/60 leading-none">{model}</span>}
-        {time && <span className="message-time text-[10px] text-foreground/[0.38] leading-none">{time}</span>}
-      </div>
-      {children}
-    </div>
-  )
-}
-
 // ===== MessageContent 内容区域 =====
 
 type MessageContentProps = HTMLAttributes<HTMLDivElement>
 
 /**
  * 消息内容区域
- * - user 消息：右侧头像 + 右对齐气泡
- * - assistant 消息：左侧头像 + 左对齐内容
+ * - user 消息：右对齐气泡
+ * - assistant 消息：左对齐内容
  */
 export function MessageContent({
   children,
@@ -132,8 +89,8 @@ export function MessageContent({
   return (
     <div
       className={cn(
-        'flex max-w-full min-w-0 flex-col gap-2 overflow-hidden pl-[46px]',
-        'group-[.is-user]:max-w-[85%] group-[.is-user]:items-end group-[.is-user]:pl-0 group-[.is-user]:pr-[46px] group-[.is-user]:text-foreground',
+        'flex max-w-full min-w-0 flex-col gap-2 overflow-hidden',
+        'group-[.is-user]:max-w-[85%] group-[.is-user]:items-end group-[.is-user]:text-foreground',
         'group-[.is-assistant]:w-full group-[.is-assistant]:text-foreground',
         className
       )}
@@ -141,6 +98,26 @@ export function MessageContent({
     >
       {children}
     </div>
+  )
+}
+
+// ===== MessageTime 消息末尾时间 =====
+
+interface MessageTimeProps extends HTMLAttributes<HTMLSpanElement> {
+  /** 已格式化的时间文本 */
+  time?: string
+}
+
+/** 消息末尾的灰色时间戳 */
+export function MessageTime({ time, className, ...props }: MessageTimeProps): React.ReactElement | null {
+  if (!time) return null
+  return (
+    <span
+      className={cn('message-time shrink-0 text-[10px] leading-none tabular-nums', className)}
+      {...props}
+    >
+      {time}
+    </span>
   )
 }
 

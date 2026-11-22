@@ -734,6 +734,8 @@ export interface AgentSessionMeta {
   channelId?: string
   /** 使用的模型 ID（自动任务子会话恢复输入框模型选择时使用） */
   modelId?: string
+  /** 本会话固定使用的执行内核；缺失时按设置决定，首次运行后写入。 */
+  agentHarness?: 'pi' | 'dsh'
   /** SDK 内部会话 ID（用于 resume 衔接上下文） */
   sdkSessionId?: string
   /** Pi session JSONL 的精确路径；避免仅按 session ID 子串定位 artifact。 */

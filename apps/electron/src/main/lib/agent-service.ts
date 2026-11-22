@@ -39,6 +39,8 @@ import type {
 } from '@proma/shared'
 import { PiAgentAdapter } from './adapters/pi-agent-adapter'
 import { PiUtilityAdapter } from './adapters/pi-utility-adapter'
+import { DshAgentAdapter } from './adapters/dsh-agent-adapter'
+import { AgentHarnessRouter } from './adapters/agent-harness-router'
 import { AgentEventBus } from './agent-event-bus'
 import { AgentOrchestrator } from './agent-orchestrator'
 import { getAgentSessionWorkspacePath } from './config-paths'
@@ -59,7 +61,9 @@ import { shouldStopBeforeAgentRun } from './agent-stop-policy'
 const eventBus = new AgentEventBus()
 const useUtilityAgentRuntime = process.env.PROMA_AGENT_RUNTIME !== 'in-process'
   && process.env.PROMA_AGENT_RUNTIME !== 'off'
-const adapter = useUtilityAgentRuntime ? new PiUtilityAdapter() : new PiAgentAdapter()
+const piAdapter = useUtilityAgentRuntime ? new PiUtilityAdapter() : new PiAgentAdapter()
+const dshAdapter = new DshAgentAdapter()
+const adapter = new AgentHarnessRouter(piAdapter, dshAdapter)
 const orchestrator = new AgentOrchestrator(adapter, eventBus)
 
 /** 导出 EventBus 供飞书 Bridge 等外部服务订阅事件 */

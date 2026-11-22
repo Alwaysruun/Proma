@@ -290,6 +290,9 @@ export function normalizeProductivityToolsSettings(input: unknown): Productivity
   }
 }
 
+/** Agent 执行内核 */
+export type AgentHarnessId = 'pi' | 'dsh'
+
 /** 提升此版本可要求用户重新确认更新后的受管浏览器风险告知。 */
 export const BROWSER_RISK_DISCLAIMER_VERSION = 1
 
@@ -303,6 +306,8 @@ export interface AppSettings {
   agentChannelId?: string
   /** Agent 默认模型 ID */
   agentModelId?: string
+  /** Agent 内核：pi = 内置 Pi（默认），dsh = DeepSeek Harness 侧车 */
+  agentHarness?: AgentHarnessId
   /** Agent 当前工作区 ID */
   agentWorkspaceId?: string
   /** Windows 上用户最近一次明确选择的 Agent 终端 Shell；未设置时使用系统默认。 */

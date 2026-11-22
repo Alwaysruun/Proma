@@ -4,18 +4,17 @@
  * 使用 ai-elements 原语组合渲染消息。
  * 支持复制、删除、重新发送、原地编辑操作，并排模式。
  *
- * - assistant 消息：头像 + Reasoning 折叠 + Markdown 内容 + 操作按钮
- * - user 消息：右对齐气泡 + 可折叠长文本 + 操作按钮
+ * - assistant 消息：Reasoning 折叠 + Markdown 内容 + 操作按钮 + 末尾时间
+ * - user 消息：右对齐气泡 + 可折叠长文本 + 操作按钮 + 末尾时间
  * - streaming 最后一条：呼吸脉冲指示器
  */
 
 import * as React from 'react'
-import { useAtomValue } from 'jotai'
 import { AlertCircle, Pencil, Quote, RotateCcw, Trash2 } from 'lucide-react'
 import {
   Message,
-  MessageHeader,
   MessageContent,
+  MessageTime,
   MessageActions,
   MessageAction,
   MessageResponse,
@@ -33,11 +32,7 @@ import { CopyButton } from './CopyButton'
 import { MigrateToAgentButton } from './MigrateToAgentButton'
 import { DeleteMessageDialog } from './DeleteMessageDialog'
 import { InlineEditForm } from './InlineEditForm'
-import { UserAvatar } from './UserAvatar'
-import { getModelLogo, resolveModelDisplayName, resolveModelProvider } from '@/lib/model-logo'
 import { cn } from '@/lib/utils'
-import { userProfileAtom } from '@/atoms/user-profile'
-import { channelsAtom } from '@/atoms/chat-atoms'
 import type { ChatMessage } from '@proma/shared'
 import type { InlineEditSubmitPayload } from './InlineEditForm'
 import { ChatToolActivityIndicator } from './ChatToolActivityIndicator'
@@ -134,8 +129,6 @@ export const ChatMessageItem = React.memo(function ChatMessageItem({
 }: ChatMessageItemProps): React.ReactElement {
   const [deleteDialogOpen, setDeleteDialogOpen] = React.useState(false)
   const [isDeleting, setIsDeleting] = React.useState(false)
-  const userProfile = useAtomValue(userProfileAtom)
-  const channels = useAtomValue(channelsAtom)
   const parsedUserContent = React.useMemo(
     () => message.role === 'user' ? parseQuotedMessageContent(message.content) : { quotes: [], text: message.content },
     [message.content, message.role],
@@ -166,32 +159,6 @@ export const ChatMessageItem = React.memo(function ChatMessageItem({
   return (
     <>
       <Message from={messageFrom}>
-        {/* assistant 头像 + 模型名 + 时间 */}
-        {message.role === 'assistant' && (
-          <MessageHeader
-            model={message.model ? resolveModelDisplayName(message.model, channels) : undefined}
-            time={formatMessageTime(message.createdAt)}
-            logo={
-              <img
-                src={getModelLogo(message.model ?? '', resolveModelProvider(message.model ?? '', channels))}
-                alt={message.model ?? 'AI'}
-                className="size-[35px] rounded-[25%] object-cover"
-              />
-            }
-          />
-        )}
-
-        {/* user 头像 + 用户名 + 时间 */}
-        {message.role === 'user' && (
-          <div className={cn('flex items-start gap-2.5 mb-2.5', isRightAlignedUser && 'flex-row-reverse')}>
-            <UserAvatar avatar={userProfile.avatar} size={35} />
-            <div className={cn('flex flex-col justify-between h-[35px]', isRightAlignedUser && 'items-end text-right')}>
-              <span className="text-sm font-semibold text-foreground/60 leading-none">{userProfile.userName}</span>
-              <span className="message-time text-[10px] text-foreground/[0.38] leading-none">{formatMessageTime(message.createdAt)}</span>
-            </div>
-          </div>
-        )}
-
         <MessageContent className={isInlineEditing ? 'w-full' : undefined}>
           {message.role === 'assistant' ? (
             <>
@@ -269,8 +236,8 @@ export const ChatMessageItem = React.memo(function ChatMessageItem({
         </MessageContent>
 
         {/* 操作按钮（非 streaming 时显示，hover 时可见） */}
-        {(message.content || message.error || (message.attachments && message.attachments.length > 0)) && !isStreaming && !isInlineEditing && (
-          <MessageActions className={cn('mt-0.5 min-h-[28px]', isRightAlignedUser ? 'justify-end pr-[46px]' : 'pl-[46px]')}>
+        {(message.content || message.reasoning || message.error || message.stopped || (message.attachments && message.attachments.length > 0)) && !isStreaming && !isInlineEditing && (
+          <MessageActions className={cn('mt-0.5 min-h-[28px]', isRightAlignedUser ? 'justify-end' : 'justify-start')}>
             <CopyButton content={message.role === 'user' ? parsedUserContent.text : message.content} />
             {message.role === 'assistant' && conversationId && (
               <MigrateToAgentButton conversationId={conversationId} />
@@ -308,6 +275,7 @@ export const ChatMessageItem = React.memo(function ChatMessageItem({
             {message.role === 'assistant' && message.stopped && !message.error && (
               <span className="text-[11px] text-foreground/40 ml-1">（已中止）</span>
             )}
+            <MessageTime time={formatMessageTime(message.createdAt)} />
           </MessageActions>
         )}
       </Message>

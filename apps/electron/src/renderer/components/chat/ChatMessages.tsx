@@ -16,13 +16,12 @@ import * as React from 'react'
 import { useAtomValue, useSetAtom } from 'jotai'
 import { Loader2 } from 'lucide-react'
 import { WelcomeEmptyState } from '@/components/welcome/WelcomeEmptyState'
-import { ChatMessageItem, formatMessageTime } from './ChatMessageItem'
+import { ChatMessageItem } from './ChatMessageItem'
 import type { InlineEditSubmitPayload } from './ChatMessageItem'
 import { ChatToolActivityIndicator } from './ChatToolActivityIndicator'
 import { ParallelChatMessages } from './ParallelChatMessages'
 import {
   Message,
-  MessageHeader,
   MessageContent,
   MessageLoading,
   MessageResponse,
@@ -46,9 +45,7 @@ import {
 import { useSmoothStream } from '@proma/ui'
 import { ScrollPositionManager } from '@/hooks/useScrollPositionMemory'
 import { useConversationParallelMode } from '@/hooks/useConversationSettings'
-import { getModelLogo, resolveModelProvider } from '@/lib/model-logo'
 import { userProfileAtom } from '@/atoms/user-profile'
-import { channelsAtom } from '@/atoms/chat-atoms'
 import { tabMinimapCacheAtom } from '@/atoms/tab-atoms'
 import type { ChatMessage, ChatToolActivity } from '@proma/shared'
 
@@ -154,8 +151,6 @@ interface ChatMessagesProps {
   streamingContent: string
   /** 流式推理内容 */
   streamingReasoning: string
-  /** 流式消息绑定的模型 */
-  streamingModel: string | null
   /** 流式开始时间戳 */
   startedAt?: number
   /** 工具活动列表 */
@@ -198,7 +193,6 @@ export function ChatMessages({
   streaming,
   streamingContent,
   streamingReasoning,
-  streamingModel,
   startedAt,
   toolActivities,
   contextDividers,
@@ -215,7 +209,6 @@ export function ChatMessages({
   onImageEditComplete,
 }: ChatMessagesProps): React.ReactElement {
   const userProfile = useAtomValue(userProfileAtom)
-  const channels = useAtomValue(channelsAtom)
   const setMinimapCache = useSetAtom(tabMinimapCacheAtom)
 
   // 平滑流式输出：将高频更新转为逐字渲染
@@ -264,22 +257,6 @@ export function ChatMessages({
   }, [needsInstant])
 
   const transitioning = needsInstant || transitioningCooldown
-
-  // 缓存 streaming MessageHeader 的 props，避免每帧 re-render 导致闪烁
-  const streamingTime = React.useMemo(
-    () => formatMessageTime(startedAt ?? Date.now()),
-    [startedAt]
-  )
-  const streamingLogo = React.useMemo(
-    () => (
-      <img
-        src={getModelLogo(streamingModel ?? '', resolveModelProvider(streamingModel ?? '', channels))}
-        alt="AI"
-        className="size-[35px] rounded-[25%] object-cover"
-      />
-    ),
-    [streamingModel, channels]
-  )
 
   /**
    * 淡入控制：切换对话时先隐藏，等 StickToBottom 定位完成后再显示。
@@ -444,11 +421,6 @@ export function ChatMessages({
             {/* 正在生成 / 停止后等待磁盘消息加载的临时 assistant 消息 */}
             {(streaming || smoothContent || smoothReasoning) && (
               <Message from="assistant">
-                <MessageHeader
-                  model={streamingModel ?? undefined}
-                  time={streamingTime}
-                  logo={streamingLogo}
-                />
                 <MessageContent>
                   {/* 工具活动指示器 */}
                   <ChatToolActivityIndicator activities={toolActivities} isStreaming={streaming} />
@@ -476,7 +448,7 @@ export function ChatMessages({
                   )}
                 </MessageContent>
                 {/* 操作栏占位：预留与 MessageActions 相同高度，防止流式结束时布局跳动 */}
-                <div className="pl-[46px] mt-0.5 min-h-[28px]" />
+                <div className="mt-0.5 min-h-[28px]" />
               </Message>
             )}
           </>

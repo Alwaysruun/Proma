@@ -158,7 +158,6 @@ function ChatViewInner({ conversationId }: ChatViewProps): React.ReactElement {
   const isStreaming = streamState?.streaming ?? false
   const streamingContent = streamState?.content ?? ''
   const streamingReasoning = streamState?.reasoning ?? ''
-  const streamingModel = streamState?.model ?? null
   const toolActivities = streamState?.toolActivities ?? []
   const chatError = chatStreamErrors.get(conversationId) ?? null
   const refreshVersion = refreshMap.get(conversationId) ?? 0
@@ -687,7 +686,6 @@ function ChatViewInner({ conversationId }: ChatViewProps): React.ReactElement {
             streaming={isStreaming}
             streamingContent={streamingContent}
             streamingReasoning={streamingReasoning}
-            streamingModel={streamingModel}
             startedAt={streamState?.startedAt}
             toolActivities={toolActivities}
             contextDividers={contextDividers}

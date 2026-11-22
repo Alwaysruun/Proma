@@ -118,6 +118,10 @@ export interface PiAgentQueryOptions extends AgentQueryInput {
   /** OAuth credential coordination key; equals the selected Proma channel id. */
   channelId?: string
   channelName?: string
+  /** DeepSeek Harness 侧车使用的完整模型目录；Pi 适配器忽略该字段。 */
+  availableModels?: Array<{ id: string; name?: string }>
+  /** DeepSeek Harness 侧车使用的 MCP 服务器声明；Pi 适配器忽略。 */
+  mcpServers?: Record<string, Record<string, unknown>>
   maxTurns?: number
   permissionMode: PromaPermissionMode
   canUseTool?: (

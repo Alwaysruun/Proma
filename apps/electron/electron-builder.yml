@@ -86,6 +86,11 @@ extraResources:
     to: builtin-plugins/proma-calendar
     filter:
       - "**/*"
+  # DeepSeek Harness 独立运行时（自带 pi-ai 1.x，避免与 Proma 的 Pi 0.87 冲突）
+  - from: dsh-runtime/node_modules
+    to: dsh-runtime/node_modules
+    filter:
+      - "**/*"
   # Proma 品牌 Logo 素材（品牌素材下载功能使用）
   - from: resources/proma-logos
     to: proma-logos

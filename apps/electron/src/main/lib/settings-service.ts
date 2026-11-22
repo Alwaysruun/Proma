@@ -42,6 +42,7 @@ export function getSettings(): AppSettings {
       feishuSessionMirror: { mode: 'off' },
       visionRelay: { enabled: false },
       windowsShellPreference: 'auto',
+      agentHarness: 'pi',
       agentThinking: { type: 'adaptive' },
       gitAttributionEnabled: true,
       productivityTools: normalizeProductivityToolsSettings(undefined),
@@ -103,6 +104,7 @@ export function getSettings(): AppSettings {
       feishuSessionMirror: { mode: 'off' },
       visionRelay: { enabled: false },
       windowsShellPreference: 'auto',
+      agentHarness: 'pi',
       agentThinking: { type: 'adaptive' },
       gitAttributionEnabled: true,
       productivityTools: normalizeProductivityToolsSettings(undefined),
@@ -124,6 +126,9 @@ export function updateSettings(updates: Partial<AppSettings>): AppSettings {
     agentIsland: updates.agentIsland === undefined
       ? sanitizeAgentIslandSettings(current.agentIsland)
       : sanitizeAgentIslandSettings({ ...current.agentIsland, ...updates.agentIsland }),
+    agentHarness: updates.agentHarness === undefined
+      ? (current.agentHarness === 'dsh' ? 'dsh' : 'pi')
+      : (updates.agentHarness === 'dsh' ? 'dsh' : 'pi'),
     productivityTools: updates.productivityTools === undefined
       ? normalizeProductivityToolsSettings(current.productivityTools)
       : normalizeProductivityToolsSettings({ ...current.productivityTools, ...updates.productivityTools }),

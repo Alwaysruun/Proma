@@ -13,7 +13,6 @@ import {
   BasePathsProvider,
   Message,
   MessageContent,
-  MessageHeader,
 } from '@/components/ai-elements/message'
 import {
   Conversation,
@@ -22,11 +21,8 @@ import {
 import { ScrollMinimap } from '@/components/ai-elements/scroll-minimap'
 import type { MinimapItem } from '@/components/ai-elements/scroll-minimap'
 import { useStickToBottomContext } from 'use-stick-to-bottom'
-import { formatMessageTime } from '@/components/chat/ChatMessageItem'
-import { resolveModelDisplayName } from '@/lib/model-logo'
 import { userProfileAtom } from '@/atoms/user-profile'
 import { tabMinimapCacheAtom } from '@/atoms/tab-atoms'
-import { channelsAtom } from '@/atoms/chat-atoms'
 import { ScrollPositionManager } from '@/hooks/useScrollPositionMemory'
 import { cn } from '@/lib/utils'
 import {
@@ -39,7 +35,7 @@ import {
 import { toTranscript } from '@proma/session-core'
 import { Spinner } from '@/components/ui/spinner'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { groupIntoTurns, AssistantLogo, MessageGroupRenderer, getGroupId, getGroupPreview, extractUserText, buildTaskProgressDataForTurn, type MessageGroup } from './SDKMessageRenderer'
+import { groupIntoTurns, MessageGroupRenderer, getGroupId, getGroupPreview, extractUserText, buildTaskProgressDataForTurn, type MessageGroup } from './SDKMessageRenderer'
 import { buildLiveGroupSet } from './live-group-set'
 import { AgentBrowserLinkProvider } from '@/components/browser/AgentBrowserLinkProvider'
 import { AgentHistorySelectionLayer } from './AgentHistorySelectionLayer'
@@ -895,7 +891,6 @@ export const AgentMessages = React.memo(function AgentMessages({
   const liveMessages = useAtomValue(agentLiveMessagesAtomFamily(sessionId))
   const streaming = streamState?.running ?? false
   const userProfile = useAtomValue(userProfileAtom)
-  const channels = useAtomValue(channelsAtom)
   const setMinimapCache = useSetAtom(tabMinimapCacheAtom)
   const historySelectionRootRef = React.useRef<HTMLDivElement>(null)
   const historyRef = React.useRef<AgentTranscriptHistoryHandle>(null)
@@ -979,11 +974,6 @@ export const AgentMessages = React.memo(function AgentMessages({
   // 避免每个 sdk_delta 同时更新 transcript 和 legacy content 两条路径。
   const retrying = streamState?.retrying
   const startedAt = streamState?.startedAt
-  const optimisticModelId = streamState?.model || sessionModelId
-  const optimisticModel = optimisticModelId
-    ? resolveModelDisplayName(optimisticModelId, channels)
-    : undefined
-  const optimisticTime = startedAt ? formatMessageTime(startedAt) : undefined
 
   // Agent 消息区不使用 StickToBottom 的 smooth resize。切换会话、虚拟列表测量和
   // 历史消息加载都必须立即定位，避免 ResizeObserver 触发滚动 spring 动画。
@@ -1228,7 +1218,7 @@ export const AgentMessages = React.memo(function AgentMessages({
               {/* 不使用 mt：ConversationContent 的 gap-1(4px) 已提供间距，
                   匹配内部 MessageActions 的 gap-0.5(2px)+mt-0.5(2px)=4px 间距 */}
               {hasLiveAssistantContent && !suppressAgentRunning && (
-                <div className="pl-[56px] min-h-[28px]">
+                <div className="min-h-[28px]">
                   {retrying && <RetryingNotice retrying={retrying} />}
                   {streaming && <AgentRunningIndicator startedAt={startedAt} />}
                 </div>
@@ -1237,11 +1227,6 @@ export const AgentMessages = React.memo(function AgentMessages({
               {/* 首个 live assistant block 到达前，先乐观渲染 assistant 外壳和 Logo；文本仍完全由 SDKMessage 渲染。 */}
               {!hasLiveAssistantContent && !suppressAgentRunning && (streaming || retrying) && (
                 <Message from="assistant">
-                  <MessageHeader
-                    model={optimisticModel}
-                    time={optimisticTime}
-                    logo={<AssistantLogo model={optimisticModelId} />}
-                  />
                   <MessageContent>
                     {retrying && <RetryingNotice retrying={retrying} />}
                     {streaming && <AgentRunningIndicator startedAt={startedAt} />}

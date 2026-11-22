@@ -78,6 +78,7 @@ export function GeneralSettings(): React.ReactElement {
   /** Git/PR 推广标识：默认开启 */
   const [gitAttributionEnabled, setGitAttributionEnabled] = React.useState(true)
   const [agentIslandEnabled, setAgentIslandEnabled] = React.useState(true)
+  const [agentHarness, setAgentHarness] = React.useState<'pi' | 'dsh'>('pi')
   const isMac = React.useMemo(() => detectIsMac(), [])
   const isWindows = React.useMemo(() => detectIsWindows(), [])
   const fileInputRef = React.useRef<HTMLInputElement>(null)
@@ -88,6 +89,7 @@ export function GeneralSettings(): React.ReactElement {
       setArchiveAfterDays(settings.archiveAfterDays ?? 7)
       setGitAttributionEnabled(settings.gitAttributionEnabled ?? true)
       setAgentIslandEnabled(settings.agentIsland?.enabled ?? true)
+      setAgentHarness(settings.agentHarness === 'dsh' ? 'dsh' : 'pi')
     }).catch(console.error)
   }, [])
 
@@ -122,6 +124,18 @@ export function GeneralSettings(): React.ReactElement {
     } catch (error) {
       console.error('[通用设置] 更新 Agent 灵动岛失败:', error)
       setAgentIslandEnabled(!checked)
+    }
+  }
+
+  /** 切换 Agent 内核；已有会话保持原内核，只影响新会话。 */
+  const handleAgentHarnessChange = async (value: 'pi' | 'dsh'): Promise<void> => {
+    const previous = agentHarness
+    setAgentHarness(value)
+    try {
+      await window.electronAPI.updateSettings({ agentHarness: value })
+    } catch (error) {
+      console.error('[通用设置] 切换 Agent 内核失败:', error)
+      setAgentHarness(previous)
     }
   }
 
@@ -289,6 +303,20 @@ export function GeneralSettings(): React.ReactElement {
         description="应用的基本配置"
       >
         <SettingsCard>
+          <SettingsRow
+            label="Agent 内核"
+            description="新建会话使用的执行内核；已开始的会话保持原内核，避免上下文丢失"
+          >
+            <Select value={agentHarness} onValueChange={(value) => { void handleAgentHarnessChange(value === 'dsh' ? 'dsh' : 'pi') }}>
+              <SelectTrigger className="w-[180px] h-8 text-[13px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="pi">Pi（默认）</SelectItem>
+                <SelectItem value="dsh">DeepSeek Harness</SelectItem>
+              </SelectContent>
+            </Select>
+          </SettingsRow>
           <SettingsRow
             label="语言"
             description="更多语言支持即将推出"

@@ -10,14 +10,12 @@
  */
 
 import { Fragment, useMemo, useRef, useEffect } from 'react'
-import { useAtomValue } from 'jotai'
 import { Loader2 } from 'lucide-react'
-import { ChatMessageItem, formatMessageTime } from './ChatMessageItem'
+import { ChatMessageItem } from './ChatMessageItem'
 import type { InlineEditSubmitPayload } from './ChatMessageItem'
 import { ContextDivider } from '@/components/ai-elements/context-divider'
 import {
   Message,
-  MessageHeader,
   MessageContent,
   MessageLoading,
   MessageResponse,
@@ -28,8 +26,6 @@ import {
   ReasoningTrigger,
   ReasoningContent,
 } from '@/components/ai-elements/reasoning'
-import { streamingModelAtom, channelsAtom } from '@/atoms/chat-atoms'
-import { getModelLogo, resolveModelProvider } from '@/lib/model-logo'
 import type { ChatMessage } from '@proma/shared'
 
 /** 消息段落（按分隔线分割） */
@@ -158,8 +154,6 @@ function MessageColumn({
   streamingReasoning = '',
   startedAt,
 }: MessageColumnProps): React.ReactElement {
-  const streamingModel = useAtomValue(streamingModelAtom)
-  const channels = useAtomValue(channelsAtom)
   const scrollRef = useRef<HTMLDivElement>(null)
 
   // 消息加载后自动滚动到底部（两列都滚到最新消息）
@@ -204,17 +198,6 @@ function MessageColumn({
         {/* assistant 列：流式生成 / 停止后等待磁盘消息的临时消息 */}
         {side === 'assistant' && (streaming || streamingContent || streamingReasoning) && (
           <Message from="assistant">
-            <MessageHeader
-              model={streamingModel ?? undefined}
-              time={formatMessageTime(Date.now())}
-              logo={
-                <img
-                  src={getModelLogo(streamingModel ?? '', resolveModelProvider(streamingModel ?? '', channels))}
-                  alt="AI"
-                  className="size-[35px] rounded-[25%] object-cover"
-                />
-              }
-            />
             <MessageContent>
               {streamingReasoning && (
                 <Reasoning isStreaming={streaming && !streamingContent} defaultOpen={true}>

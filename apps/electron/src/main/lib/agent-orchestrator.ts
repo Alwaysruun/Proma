@@ -1622,6 +1622,10 @@ export class AgentOrchestrator {
         provider: channel.provider,
         channelId,
         channelName: channel.name,
+        ...(Object.keys(mcpServers).length > 0 && { mcpServers }),
+        ...(channel.models.length > 0 && {
+          availableModels: channel.models.filter((item) => item.enabled).map((item) => ({ id: item.id, name: item.name })),
+        }),
         proxyUrl,
         runtimeEnv,
         ...(maxTurns != null && { maxTurns }),

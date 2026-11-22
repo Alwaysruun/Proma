@@ -3,7 +3,7 @@
  *
  * 支持两种渲染模式：
  * 1. 单条消息：SDKMessageRenderer（用于实时流式消息）
- * 2. Turn 分组：AssistantTurnRenderer（用于持久化消息，一个 turn 一个 header）
+ * 2. Turn 分组：AssistantTurnRenderer（用于持久化消息，一个 turn 一个末尾时间）
  *
  * Turn 分组规则：
  * - 用户消息后到下一条用户消息之间的所有 assistant 消息组成一个 turn
@@ -12,7 +12,7 @@
  */
 
 import * as React from 'react'
-import { Bot, Loader2, AlertTriangle, FileText, FileImage, Download, Split, Undo2, RotateCw, Plus, Minimize2, Wrench, Settings, Cpu, ExternalLink, Quote, Clock, FolderInput, FolderPlus, ListTodo } from 'lucide-react'
+import { Loader2, AlertTriangle, FileText, FileImage, Download, Split, Undo2, RotateCw, Plus, Minimize2, Wrench, Settings, Cpu, ExternalLink, Quote, Clock, FolderInput, FolderPlus, ListTodo } from 'lucide-react'
 import { useAtomValue, useSetAtom } from 'jotai'
 import { cn } from '@/lib/utils'
 import { ImageLightbox, type LightboxImage } from '@/components/ui/image-lightbox'
@@ -39,7 +39,7 @@ export type { MessageGroup, AssistantTurn } from '@proma/session-core'
 import { DurationBadge } from './AgentMessages'
 import {
   Message,
-  MessageHeader,
+  MessageTime,
   MessageContent,
   MessageActions,
   MessageAction,
@@ -47,14 +47,11 @@ import {
   UserMessageContent,
   TurnFileMapProvider,
 } from '@/components/ai-elements/message'
-import { UserAvatar } from '@/components/chat/UserAvatar'
 import { CopyButton } from '@/components/chat/CopyButton'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { formatMessageTime } from '@/components/chat/ChatMessageItem'
-import { getModelLogo, resolveModelDisplayName, resolveModelProvider } from '@/lib/model-logo'
-import { userProfileAtom } from '@/atoms/user-profile'
-import { channelsAtom, modelSelectorOpenAtom } from '@/atoms/chat-atoms'
+import { modelSelectorOpenAtom } from '@/atoms/chat-atoms'
 import { agentSessionPendingFilesAtom, agentSessionsAtom, agentWorkspacesAtom } from '@/atoms/agent-atoms'
 import { activeSessionIdAtom } from '@/atoms/tab-atoms'
 import { automationsAtom, automationFormAtom, automationToDraft } from '@/atoms/automation-atoms'
@@ -98,10 +95,6 @@ export interface SDKMessageRendererProps {
   allMessages: SDKMessage[]
   /** 相对路径解析基准 */
   basePath?: string
-  /** 是否显示消息头部（模型 icon + 名称），默认 true */
-  showHeader?: boolean
-  /** 用户在前端选择的模型 ID（优先用于显示名称） */
-  sessionModelId?: string
 }
 
 // ===== system 消息：上下文压缩分割线 =====
@@ -132,7 +125,7 @@ function PermissionDeniedNotice({ message }: { message: SDKSystemMessage }): Rea
   const reason = typeof message.decision_reason === 'string' ? message.decision_reason : undefined
 
   return (
-    <div className="my-3 pl-[46px] pr-1">
+    <div className="my-3 px-1">
       <div className="flex items-start gap-2.5 rounded-md border border-amber-500/20 bg-amber-500/5 px-3 py-2.5 text-xs text-foreground/80">
         <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-amber-500" />
         <div className="min-w-0 space-y-1">
@@ -186,7 +179,7 @@ function CompactStatusNotice({ message }: { message: SDKSystemMessage }): React.
   if (compactStatus === 'failed') {
     const error = typeof message.compact_error === 'string' ? message.compact_error : undefined
     return (
-      <div className="my-3 pl-[46px] pr-1">
+      <div className="my-3 px-1">
         <div className="flex items-start gap-2.5 rounded-md border border-destructive/25 bg-destructive/5 px-3 py-2.5 text-xs text-foreground/80">
           <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-destructive" />
           <div className="min-w-0 space-y-1">
@@ -262,26 +255,6 @@ function extractToolResultForTask(message: SDKUserMessage, resultBlock: SDKToolR
 }
 
 // isUserInputMessage 已迁移至 @proma/session-core
-
-// ===== 助手头像 =====
-
-export function AssistantLogo({ model }: { model?: string }): React.ReactElement {
-  const channels = useAtomValue(channelsAtom)
-  if (model) {
-    return (
-      <img
-        src={getModelLogo(model, resolveModelProvider(model, channels))}
-        alt={model}
-        className="size-[35px] rounded-[25%] object-cover"
-      />
-    )
-  }
-  return (
-    <div className="size-[35px] rounded-[25%] bg-primary/10 flex items-center justify-center">
-      <Bot size={18} className="text-primary" />
-    </div>
-  )
-}
 
 // AssistantTurn / MessageGroup 类型已迁移至 @proma/session-core
 
@@ -393,7 +366,6 @@ export interface AssistantTurnRendererProps {
 }
 
 export function AssistantTurnRenderer({ turn, allMessages, basePath, onFork, onRewind, onCreateTodo, onRetry, onRetryInNewSession, onCompact, onRelinkProjectRoot, onRestoreProjectRoot, isStreaming, stoppedByUser, sessionModelId }: AssistantTurnRendererProps): React.ReactElement | null {
-  const channels = useAtomValue(channelsAtom)
   // 收集所有 assistant 消息的内容块，保留 parent_tool_use_id 关联
   interface EnrichedBlock {
     block: SDKContentBlock
@@ -525,11 +497,6 @@ export function AssistantTurnRenderer({ turn, allMessages, basePath, onFork, onR
 
   return (
     <Message from="assistant">
-      <MessageHeader
-        model={turn.model ? resolveModelDisplayName(turn.model, channels) : undefined}
-        time={turn.createdAt ? formatMessageTime(turn.createdAt) : undefined}
-        logo={<AssistantLogo model={turn.model} />}
-      />
       <MessageContent>
         <TurnFileMapProvider map={turnFileMap}>
         <div className={cn('space-y-2')}>
@@ -594,9 +561,9 @@ export function AssistantTurnRenderer({ turn, allMessages, basePath, onFork, onR
           : undefined
         const hasActions = !!(textContent || (onFork && lastUuid) || (onRewind && lastUuid))
         const hasDuration = durationMs != null
-        if (!hasDuration && !hasActions && !showStoppedBadge) return null
+        if (!hasDuration && !hasActions && !showStoppedBadge && !turn.createdAt) return null
         return (
-          <MessageActions className="pl-[46px] mt-0.5 min-h-[28px] justify-start">
+          <MessageActions className="mt-0.5 min-h-[28px] justify-start">
             {hasDuration && <DurationBadge durationMs={durationMs!} usage={usage} />}
             {textContent && <CopyButton content={textContent} />}
             {textContent && onCreateTodo && (
@@ -619,6 +586,7 @@ export function AssistantTurnRenderer({ turn, allMessages, basePath, onFork, onR
                 已被用户中断
               </Badge>
             )}
+            <MessageTime time={turn.createdAt ? formatMessageTime(turn.createdAt) : undefined} />
           </MessageActions>
         )
       })()}
@@ -632,10 +600,7 @@ export function SDKMessageRenderer({
   message,
   allMessages,
   basePath,
-  showHeader = true,
-  sessionModelId,
 }: SDKMessageRendererProps): React.ReactElement | null {
-  const channels = useAtomValue(channelsAtom)
   const msgType = message.type
 
   // assistant 消息：遍历内容块渲染
@@ -670,7 +635,6 @@ export function SDKMessageRenderer({
       return null
     }
 
-    const model = aMsg._channelModelId || aMsg.message?.model || sessionModelId
     const meta = extractMeta(message)
 
     // 检测是否有主要内容（text 块）
@@ -680,13 +644,7 @@ export function SDKMessageRenderer({
 
     return (
       <Message from="assistant">
-        {showHeader && (
-          <MessageHeader
-            model={model ? resolveModelDisplayName(model, channels) : undefined}
-            time={meta.createdAt ? formatMessageTime(meta.createdAt) : undefined}
-            logo={<AssistantLogo model={model} />}
-          />
-        )}
+
         <MessageContent>
           <div className={cn('space-y-2')}>
             {blocks.map((block, i) => (
@@ -705,6 +663,11 @@ export function SDKMessageRenderer({
             <AssistantErrorTail message={aMsg} />
           )}
         </MessageContent>
+        {meta.createdAt && (
+          <MessageActions className="mt-0.5 min-h-[28px] justify-start">
+            <MessageTime time={formatMessageTime(meta.createdAt)} />
+          </MessageActions>
+        )}
       </Message>
     )
   }
@@ -928,7 +891,6 @@ function UserInputMessage({ message, onAgentHistoryQuoteClick }: {
   message: SDKUserMessage
   onAgentHistoryQuoteClick?: (quote: QuotedSelection) => void
 }): React.ReactElement {
-  const userProfile = useAtomValue(userProfileAtom)
   const rawText = extractUserText(message) ?? ''
   const isScheduledRun = rawText.includes(SCHEDULED_RUN_MARKER)
   const { files: attachedFiles, quotes, text } = parseAttachedFiles(
@@ -995,22 +957,6 @@ function UserInputMessage({ message, onAgentHistoryQuoteClick }: {
 
   return (
     <Message from="user">
-      <div className="flex flex-row-reverse items-start gap-2.5 mb-2.5">
-        <UserAvatar avatar={userProfile.avatar} size={35} />
-        <div className="flex flex-col items-end justify-between h-[35px] text-right">
-          <span className="text-sm font-semibold text-foreground/60 leading-none">{userProfile.userName}</span>
-          {(meta.createdAt || isScheduledRun) && (
-            <span className="flex items-center gap-2 leading-none">
-              {meta.createdAt && (
-                <span className="message-time text-[10px] text-foreground/[0.38]">{formatMessageTime(meta.createdAt)}</span>
-              )}
-              {isScheduledRun && (
-                <ScheduledRunBadge />
-              )}
-            </span>
-          )}
-        </div>
-      </div>
       <MessageContent>
         {/* 引用文件 Chip */}
         {quotes.filter((quote) => quote.sourceType !== 'agent-history').length > 0 && (
@@ -1060,9 +1006,11 @@ function UserInputMessage({ message, onAgentHistoryQuoteClick }: {
           onIndexChange={setLightboxIndex}
         />
       )}
-      {text && (
-        <MessageActions className="pr-[46px] mt-0.5">
-          <CopyButton content={replaceAgentHistoryQuoteMentionsWithLabels(text)} />
+      {(text || meta.createdAt || isScheduledRun) && (
+        <MessageActions className="mt-0.5 min-h-[28px] justify-end">
+          {text && <CopyButton content={replaceAgentHistoryQuoteMentionsWithLabels(text)} />}
+          {isScheduledRun && <ScheduledRunBadge />}
+          <MessageTime time={meta.createdAt ? formatMessageTime(meta.createdAt) : undefined} />
         </MessageActions>
       )}
     </Message>
@@ -1346,15 +1294,6 @@ function ErrorMessage({ message, onRetry, onRetryInNewSession, onCompact, onReli
 
   return (
     <Message from="assistant">
-      <MessageHeader
-        model={undefined}
-        time={meta.createdAt ? formatMessageTime(meta.createdAt) : undefined}
-        logo={
-          <div className="size-[35px] rounded-[25%] bg-destructive/10 flex items-center justify-center">
-            <AlertTriangle size={18} className="text-destructive" />
-          </div>
-        }
-      />
       <MessageContent>
         <AssistantErrorTail
           message={message}
@@ -1366,8 +1305,9 @@ function ErrorMessage({ message, onRetry, onRetryInNewSession, onCompact, onReli
           standalone
         />
       </MessageContent>
-      <MessageActions className="pl-[46px] mt-0.5">
+      <MessageActions className="mt-0.5 min-h-[28px] justify-start">
         <CopyButton content={copyText} />
+        <MessageTime time={meta.createdAt ? formatMessageTime(meta.createdAt) : undefined} />
       </MessageActions>
     </Message>
   )

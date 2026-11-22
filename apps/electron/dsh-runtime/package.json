@@ -1,0 +1,10 @@
+{
+  "name": "proma-dsh-runtime",
+  "private": true,
+  "version": "0.2.2-rc.5",
+  "workspaces": [],
+  "dependencies": {
+    "@deepseek-ai/dsh": "0.2.2-rc.5",
+    "node": "24.15.0"
+  }
+}
