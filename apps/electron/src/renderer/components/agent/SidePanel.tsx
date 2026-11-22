@@ -72,6 +72,7 @@ import {
   agentTerminalTabsAtom,
   agentSidePanelSplitMapAtom,
   agentSidePanelSplitRatioMapAtom,
+  agentChangesTabHiddenMapAtom,
 } from '@/atoms/agent-atoms'
 import {
   getBrowserSidePanelTab,
@@ -919,9 +920,14 @@ export function SidePanel({ sessionId, sessionPath, activeTab, onTabChange, widt
   const setMemoryNavigationRequest = useSetAtom(memoryFileNavigationAtom)
   const latestMemoryChange = workspaceSlug ? memoryChangesMap.get(workspaceSlug)?.[0] : undefined
   const lastActivatedMemoryChangeRef = React.useRef<string | null>(null)
+  const changesTabHiddenMap = useAtomValue(agentChangesTabHiddenMapAtom)
+  const setChangesTabHiddenMap = useSetAtom(agentChangesTabHiddenMapAtom)
+  const changesTabHidden = changesTabHiddenMap[sessionId] === true
   const effectiveActiveTab: AgentSidePanelTab = activeTab === 'chat' && !sideChatConversationId
     ? 'files'
-    // `temporary-agent` 是旧的单分支内存状态；新状态使用 exploration:<sessionId>。
+    : activeTab === 'changes' && changesTabHidden
+      ? 'files'
+      // `temporary-agent` 是旧的单分支内存状态；新状态使用 exploration:<sessionId>。
     : activeTab === 'temporary-agent' || (activeExplorationSessionId !== null && !activeExplorationBranch) || (activeTab === 'delegation' && !selectedDelegationSession) || (activeTerminalId !== null && !terminalTabs.some((terminal) => terminal.terminalId === activeTerminalId))
       ? 'files'
       : isAgentWorkspaceTab(activeTab) && (!workspaceSlug || !workspaceComponentTabs.includes(activeTab) || !isWorkspaceComponentEnabled(activeTab))
@@ -1205,6 +1211,16 @@ export function SidePanel({ sessionId, sessionPath, activeTab, onTabChange, widt
     flushBrowserTabSelection()
   }, [flushBrowserTabSelection, markDelegationSessionViewed, onTabChange, previewFiles, sessionId, setPreviewFileMap, sideChatConversationId, sideDelegationSessionId, sideTemporaryAgents, split, updateSplit])
 
+  const handleOpenChangesTab = React.useCallback(() => {
+    setChangesTabHiddenMap((previous) => {
+      if (!previous[sessionId]) return previous
+      const next = { ...previous }
+      delete next[sessionId]
+      return next
+    })
+    handleWorkspaceTabChange('changes')
+  }, [handleWorkspaceTabChange, sessionId, setChangesTabHiddenMap])
+
   // Agent/浏览器等外部事件仍只更新兼容 activeTab；分屏时把新目标落到当前焦点 Pane。
   React.useEffect(() => {
     if (!split || getFocusedRightWorkspaceTab(split) === effectiveActiveTab) return
@@ -1297,10 +1313,15 @@ export function SidePanel({ sessionId, sessionPath, activeTab, onTabChange, widt
     if (!isWorkspaceComponentEnabled(activeTab)) onTabChange('files')
   }, [activeTab, isWorkspaceComponentEnabled, onTabChange])
 
+  // 「改动」页签被关闭后，如果它仍是当前页签，回退到文件页签。
+  React.useEffect(() => {
+    if (changesTabHidden && activeTab === 'changes') onTabChange('files')
+  }, [activeTab, changesTabHidden, onTabChange])
+
   const [isAddTabMenuOpen, setIsAddTabMenuOpen] = React.useState(false)
   const workspaceTabs = React.useMemo<WorkspacePanelTab[]>(() => [
     { id: 'files', label: '文件', icon: <FolderOpen className="size-3.5" /> },
-    { id: 'changes', label: '改动', icon: <FileDiff className="size-3.5" /> },
+    ...(changesTabHidden ? [] : [{ id: 'changes' as const, label: '改动', icon: <FileDiff className="size-3.5" />, closable: true }]),
     ...workspaceComponentTabs.map((component) => {
       if (!isWorkspaceComponentTab(component)) {
         const pluginId = getPluginIdFromWorkspaceTab(component)
@@ -1358,7 +1379,7 @@ export function SidePanel({ sessionId, sessionPath, activeTab, onTabChange, widt
       closable: true,
       activity: showBrowserActivity && activeBrowserTabId !== tab.tabId && browserState.activeTabId === tab.tabId,
     })) ?? []),
-  ], [activeBrowserTabId, browserState, previewFiles, selectedDelegationSession, selectedDelegationStatus, sessions, showBrowserActivity, sideChatConversationId, sideTemporaryAgents, terminalTabs, workspaceComponentTabs])
+  ], [activeBrowserTabId, browserState, changesTabHidden, previewFiles, selectedDelegationSession, selectedDelegationStatus, sessions, showBrowserActivity, sideChatConversationId, sideTemporaryAgents, terminalTabs, workspaceComponentTabs])
   workspaceTabsRef.current = workspaceTabs
 
   React.useEffect(() => {
@@ -1396,6 +1417,11 @@ export function SidePanel({ sessionId, sessionPath, activeTab, onTabChange, widt
       returnToPreviousTabAfterClose(tab)
       return
     }
+    if (tab === 'changes') {
+      setChangesTabHiddenMap((previous) => ({ ...previous, [sessionId]: true }))
+      returnToPreviousTabAfterClose(tab)
+      return
+    }
     if (isAgentWorkspaceTab(tab)) {
       setWorkspaceComponentTabs((previous) => previous.filter((component) => component !== tab))
       returnToPreviousTabAfterClose(tab)
@@ -1409,7 +1435,7 @@ export function SidePanel({ sessionId, sessionPath, activeTab, onTabChange, widt
     if (tab === 'delegation') { handleCloseDelegationTab(); return }
     const browserTabId = getBrowserTabIdFromSidePanelTab(tab)
     if (browserTabId) void handleCloseBrowserTab(browserTabId)
-  }, [exitSplitInsteadOfClosingBoundTab, handleCloseBrowserTab, handleCloseChatTab, handleCloseDelegationTab, handleCloseExplorationTab, handleClosePreviewTab, returnToPreviousTabAfterClose, sessionId, setTerminalTabsMap, setWorkspaceComponentTabs])
+  }, [exitSplitInsteadOfClosingBoundTab, handleCloseBrowserTab, handleCloseChatTab, handleCloseDelegationTab, handleCloseExplorationTab, handleClosePreviewTab, returnToPreviousTabAfterClose, sessionId, setChangesTabHiddenMap, setTerminalTabsMap, setWorkspaceComponentTabs])
 
   React.useEffect(() => {
     const handleCloseActiveWorkspaceTab = (event: Event) => {
@@ -1837,6 +1863,7 @@ export function SidePanel({ sessionId, sessionPath, activeTab, onTabChange, widt
             onOpenBrowser={() => void handleOpenBrowserTab()}
             onAddTabMenuOpenChange={setIsAddTabMenuOpen}
             onOpenFile={() => handleWorkspaceTabChange('files')}
+            onOpenChanges={handleOpenChangesTab}
             onOpenTerminal={handleOpenTerminal}
             onOpenWorkspaceComponent={(component) => {
               if (!isWorkspaceComponentEnabled(component)) return

@@ -848,6 +848,14 @@ export const agentSessionComponentTabsAtomFamily = atomFamily((sessionId: string
 /** 侧面板当前工作区：基础视图或某个浏览器网页（per-session Map）。 */
 export const agentDiffPanelTabAtom = atom<Map<string, AgentSidePanelTab | 'browser' | 'preview'>>(new Map())
 
+/** 用户主动关闭「改动」页签的会话；默认显示，可通过 + 菜单重新打开。 */
+export const agentChangesTabHiddenMapAtom = atomWithStorage<Record<string, boolean>>(
+  'proma-agent-changes-tab-hidden-by-session',
+  {},
+  undefined,
+  { getOnInit: true },
+)
+
 /** 当前 renderer 运行期内的右侧双 Pane 状态；动态 Tab 失效时由 SidePanel 主动清理。 */
 export const agentSidePanelSplitMapAtom = atom<Map<string, RightWorkspaceSplitState>>(new Map())
 

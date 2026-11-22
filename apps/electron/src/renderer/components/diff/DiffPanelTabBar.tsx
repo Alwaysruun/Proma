@@ -6,7 +6,7 @@
 
 import * as React from 'react'
 import { useAtomValue, useSetAtom } from 'jotai'
-import { Blocks, Brain, Clock, Columns2, FolderOpen, Globe, MessageCircle, PanelRight, Plus, Puzzle, Repeat2, ServerCog, SquareTerminal, X } from 'lucide-react'
+import { Blocks, Brain, Clock, Columns2, FileDiff, FolderOpen, Globe, MessageCircle, PanelRight, Plus, Puzzle, Repeat2, ServerCog, SquareTerminal, X } from 'lucide-react'
 import { OBSIDIAN_NAME, ObsidianIcon } from '@/components/obsidian/obsidian-brand'
 import { cn } from '@/lib/utils'
 import { getScrollLeftToRevealTab } from '@/lib/tab-visibility'
@@ -54,6 +54,7 @@ interface DiffPanelTabBarProps {
   /** 加号菜单是否展开；供原生浏览器视图临时避让。 */
   onAddTabMenuOpenChange?: (open: boolean) => void
   onOpenFile: () => void
+  onOpenChanges?: () => void
   onOpenTerminal?: () => void
   onOpenWorkspaceComponent?: (component: WorkspaceComponentTab) => void
   onOpenVault?: () => void
@@ -78,6 +79,7 @@ export function DiffPanelTabBar({
   onOpenBrowser,
   onAddTabMenuOpenChange,
   onOpenFile,
+  onOpenChanges,
   onOpenTerminal,
   onOpenWorkspaceComponent,
   onOpenVault,
@@ -483,6 +485,12 @@ export function DiffPanelTabBar({
               <FolderOpen className="size-3.5" />
               打开文件
             </DropdownMenuItem>
+            {onOpenChanges && (
+              <DropdownMenuItem onSelect={onOpenChanges}>
+                <FileDiff className="size-3.5" />
+                打开改动
+              </DropdownMenuItem>
+            )}
             {onOpenTerminal && (
               <DropdownMenuItem onSelect={onOpenTerminal}>
                 <SquareTerminal className="size-3.5" />
