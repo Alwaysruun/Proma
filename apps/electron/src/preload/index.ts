@@ -67,6 +67,8 @@ import type {
   PluginInstallActionResult,
   PluginInstallOptions,
   PluginUninstallResult,
+  PromaPluginSettingsSnapshot,
+  SavePromaPluginSettingsInput,
   FileEntry,
   FileSearchResult,
   EnvironmentCheckResult,
@@ -767,6 +769,16 @@ export interface ElectronAPI {
 
   /** 创建插件模板并打开目录 */
   createPluginTemplate: () => Promise<string>
+
+  /** 读取插件配置界面数据；密钥字段只返回是否已配置 */
+  getPluginSettings: (workspaceSlug: string, pluginId: string) => Promise<PromaPluginSettingsSnapshot>
+
+  /** 保存插件配置；密钥由主进程加密存储 */
+  savePluginSettings: (
+    workspaceSlug: string,
+    pluginId: string,
+    input: SavePromaPluginSettingsInput,
+  ) => Promise<PromaPluginSettingsSnapshot>
 
   /** 切换工作区 Skill 启用/禁用 */
   toggleWorkspaceSkill: (workspaceSlug: string, skillSlug: string, enabled: boolean) => Promise<void>
@@ -2158,6 +2170,23 @@ const electronAPI: ElectronAPI = {
 
   createPluginTemplate: () => {
     return ipcRenderer.invoke(AGENT_IPC_CHANNELS.CREATE_PLUGIN_TEMPLATE) as Promise<string>
+  },
+
+  getPluginSettings: (workspaceSlug: string, pluginId: string) => {
+    return ipcRenderer.invoke(
+      AGENT_IPC_CHANNELS.GET_PLUGIN_SETTINGS,
+      workspaceSlug,
+      pluginId,
+    ) as Promise<PromaPluginSettingsSnapshot>
+  },
+
+  savePluginSettings: (workspaceSlug: string, pluginId: string, input: SavePromaPluginSettingsInput) => {
+    return ipcRenderer.invoke(
+      AGENT_IPC_CHANNELS.SAVE_PLUGIN_SETTINGS,
+      workspaceSlug,
+      pluginId,
+      input,
+    ) as Promise<PromaPluginSettingsSnapshot>
   },
 
   toggleWorkspaceSkill: (workspaceSlug: string, skillSlug: string, enabled: boolean) => {

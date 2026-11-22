@@ -6,7 +6,11 @@ import * as React from 'react'
 import { useSetAtom } from 'jotai'
 import { toast } from 'sonner'
 import { workspaceCapabilitiesVersionAtom } from '@/atoms/agent-atoms'
-import type { InstalledPromaPlugin } from '@proma/shared'
+import type {
+  InstalledPromaPlugin,
+  PromaPluginSettingsSnapshot,
+  SavePromaPluginSettingsInput,
+} from '@proma/shared'
 
 export interface PluginsData {
   plugins: InstalledPromaPlugin[]
@@ -18,6 +22,8 @@ export interface PluginsData {
   uninstall: (plugin: InstalledPromaPlugin) => Promise<void>
   openFolder: (plugin: InstalledPromaPlugin) => Promise<void>
   createTemplate: () => Promise<void>
+  getSettings: (pluginId: string) => Promise<PromaPluginSettingsSnapshot>
+  saveSettings: (pluginId: string, input: SavePromaPluginSettingsInput) => Promise<PromaPluginSettingsSnapshot>
 }
 
 export function usePluginsData(workspaceSlug: string): PluginsData {
@@ -171,6 +177,19 @@ export function usePluginsData(workspaceSlug: string): PluginsData {
     }
   }, [busyAction])
 
+  const getSettings = React.useCallback(async (pluginId: string): Promise<PromaPluginSettingsSnapshot> => {
+    return window.electronAPI.getPluginSettings(workspaceSlug, pluginId)
+  }, [workspaceSlug])
+
+  const saveSettings = React.useCallback(async (
+    pluginId: string,
+    input: SavePromaPluginSettingsInput,
+  ): Promise<PromaPluginSettingsSnapshot> => {
+    const snapshot = await window.electronAPI.savePluginSettings(workspaceSlug, pluginId, input)
+    bumpCapabilitiesVersion((version) => version + 1)
+    return snapshot
+  }, [workspaceSlug, bumpCapabilitiesVersion])
+
   return {
     plugins,
     loading,
@@ -181,5 +200,7 @@ export function usePluginsData(workspaceSlug: string): PluginsData {
     uninstall,
     openFolder,
     createTemplate,
+    getSettings,
+    saveSettings,
   }
 }

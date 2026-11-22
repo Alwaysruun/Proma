@@ -54,6 +54,7 @@ import { appendSDKMessages, updateAgentSessionMeta, getAgentSessionMeta, getAgen
 import { getAgentWorkspace, getProjectFilesPath, getWorkspaceMcpConfig, getWorkspaceAttachedDirectories, getWorkspaceAttachedFiles, getWorkspaceAgentsMdPath, readWorkspaceAgentsMd, getWorkspaceMemoryGuidance, isWorkspaceProjectKnowledgeMaintenanceApproved } from './agent-workspace-manager'
 import { getLocalProjectRootStatus } from './project-root-health'
 import { getMcpApiKeyEnvironment, getMcpOAuthHeaders } from './mcp-oauth-service'
+import { getPluginSettingsEnv } from './plugin-settings'
 import { getAgentWorkspacePath, getAgentSessionWorkspacePath, getSdkConfigDir, getWorkspaceSkillsDir } from './config-paths'
 import { getRuntimeStatus } from './runtime-init'
 import { getSettings } from './settings-service'
@@ -266,10 +267,12 @@ export class AgentOrchestrator {
 
       if (type === 'stdio' && entry.command) {
         const credentialEnv = getMcpApiKeyEnvironment(workspaceSlug, name, entry)
+        const pluginSettingsEnv = getPluginSettingsEnv(workspaceSlug, name)
         const mergedEnv: Record<string, string> = {
           ...(process.env.PATH && { PATH: process.env.PATH }),
           ...entry.env,
           ...credentialEnv,
+          ...pluginSettingsEnv,
         }
         mcpServers[name] = {
           type: 'stdio',

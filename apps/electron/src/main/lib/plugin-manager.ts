@@ -29,6 +29,9 @@ import type {
   PluginUninstallResult,
   PromaPluginManifest,
   PromaPluginMcpServer,
+  PromaPluginSettingField,
+  PromaPluginSettingOption,
+  PromaPluginSettingsSchema,
   WorkspaceMcpConfig,
 } from '@proma/shared'
 
@@ -39,6 +42,9 @@ const MCP_NAME_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/
 const MAX_PLUGIN_BYTES = 50 * 1024 * 1024
 const MAX_PLUGIN_FILES = 3000
 const VALID_MCP_TYPES = new Set(['stdio', 'http', 'sse', 'streamableHttp', 'streamable-http', 'streamable_http'])
+const VALID_SETTING_TYPES = new Set(['text', 'password', 'number', 'boolean', 'select'])
+const SETTING_KEY_RE = /^[A-Za-z_][A-Za-z0-9_.-]{0,63}$/
+const SETTING_ENV_RE = /^[A-Za-z_][A-Za-z0-9_]*$/
 
 interface PluginRegistry {
   workspaces: Record<string, InstalledPromaPlugin[]>
@@ -105,6 +111,130 @@ function findPluginRoot(dir: string): string {
   fail('压缩包中包含多个插件，请一次只安装一个插件')
 }
 
+function parseSettingOptions(value: unknown, fieldKey: string): PromaPluginSettingOption[] {
+  if (!Array.isArray(value) || value.length === 0 || value.length > 50) {
+    fail('插件配置项 ' + fieldKey + ' 的 options 必须是非空数组')
+  }
+  const seen = new Set<string>()
+  const options: PromaPluginSettingOption[] = []
+  for (const item of value) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) {
+      fail('插件配置项 ' + fieldKey + ' 的 options 格式无效')
+    }
+    const record = item as Record<string, unknown>
+    const label = typeof record.label === 'string' ? record.label.trim() : ''
+    const optionValue = typeof record.value === 'string' ? record.value.trim() : ''
+    if (!label || !optionValue || seen.has(optionValue)) {
+      fail('插件配置项 ' + fieldKey + ' 的 options 必须包含唯一且非空的 label/value')
+    }
+    seen.add(optionValue)
+    options.push({ label, value: optionValue })
+  }
+  return options
+}
+
+function parsePluginSettings(value: unknown): PromaPluginSettingsSchema | undefined {
+  if (value === undefined) return undefined
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    fail('插件 settings 必须是对象')
+  }
+  const raw = value as Record<string, unknown>
+  if (!Array.isArray(raw.fields) || raw.fields.length === 0) {
+    fail('插件 settings.fields 必须是非空数组')
+  }
+  if (raw.fields.length > 50) fail('插件配置项不能超过 50 个')
+
+  const seenKeys = new Set<string>()
+  const seenEnv = new Set<string>()
+  const fields: PromaPluginSettingField[] = []
+
+  for (const item of raw.fields) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) {
+      fail('插件配置项格式无效')
+    }
+    const record = item as Record<string, unknown>
+    const key = typeof record.key === 'string' ? record.key.trim() : ''
+    const label = typeof record.label === 'string' ? record.label.trim() : ''
+    const type = typeof record.type === 'string' ? record.type.trim() : ''
+    if (!SETTING_KEY_RE.test(key) || seenKeys.has(key)) {
+      fail('插件配置项 key 无效或重复: ' + key)
+    }
+    if (!label) fail('插件配置项 ' + key + ' 缺少 label')
+    if (!VALID_SETTING_TYPES.has(type)) {
+      fail('插件配置项 ' + key + ' 的 type 无效: ' + type)
+    }
+    seenKeys.add(key)
+
+    const field: PromaPluginSettingField = {
+      key,
+      label,
+      type: type as PromaPluginSettingField['type'],
+    }
+    if (typeof record.description === 'string') field.description = record.description.trim()
+    if (typeof record.placeholder === 'string') field.placeholder = record.placeholder.trim()
+    if (record.required !== undefined) {
+      if (typeof record.required !== 'boolean') fail('插件配置项 ' + key + ' 的 required 必须是布尔值')
+      field.required = record.required
+    }
+
+    if (record.env !== undefined) {
+      const env = typeof record.env === 'string' ? record.env.trim() : ''
+      if (!SETTING_ENV_RE.test(env)) fail('插件配置项 ' + key + ' 的 env 无效')
+      if (seenEnv.has(env)) fail('插件配置项环境变量重复: ' + env)
+      seenEnv.add(env)
+      field.env = env
+    }
+
+    if (type === 'select') {
+      field.options = parseSettingOptions(record.options, key)
+    } else if (record.options !== undefined) {
+      fail('只有 select 配置项可以声明 options: ' + key)
+    }
+
+    if (type === 'number') {
+      for (const name of ['min', 'max', 'step'] as const) {
+        if (record[name] !== undefined) {
+          if (typeof record[name] !== 'number' || !Number.isFinite(record[name])) {
+            fail('插件配置项 ' + key + ' 的 ' + name + ' 必须是数字')
+          }
+          field[name] = record[name]
+        }
+      }
+      if (field.step !== undefined && field.step <= 0) fail('插件配置项 ' + key + ' 的 step 必须大于 0')
+      if (field.min !== undefined && field.max !== undefined && field.min > field.max) {
+        fail('插件配置项 ' + key + ' 的 min 不能大于 max')
+      }
+    } else {
+      for (const name of ['min', 'max', 'step'] as const) {
+        if (record[name] !== undefined) fail('只有 number 配置项可以声明 ' + name + ': ' + key)
+      }
+    }
+
+    if (record.default !== undefined) {
+      if (type === 'password') fail('password 配置项不能设置 default: ' + key)
+      if (type === 'boolean') {
+        if (typeof record.default !== 'boolean') fail('插件配置项 ' + key + ' 的 default 必须是布尔值')
+      } else if (type === 'number') {
+        if (typeof record.default !== 'number' || !Number.isFinite(record.default)) {
+          fail('插件配置项 ' + key + ' 的 default 必须是数字')
+        }
+        if (field.min !== undefined && record.default < field.min) fail('插件配置项 ' + key + ' 的 default 小于 min')
+        if (field.max !== undefined && record.default > field.max) fail('插件配置项 ' + key + ' 的 default 大于 max')
+      } else {
+        if (typeof record.default !== 'string') fail('插件配置项 ' + key + ' 的 default 必须是字符串')
+        if (type === 'select' && !field.options?.some((option) => option.value === record.default)) {
+          fail('插件配置项 ' + key + ' 的 default 不在 options 中')
+        }
+      }
+      field.default = record.default
+    }
+
+    fields.push(field)
+  }
+
+  return { fields }
+}
+
 export function readManifest(root: string): PromaPluginManifest {
   const manifestPath = findManifestPath(root)
   let parsed: unknown
@@ -141,6 +271,10 @@ export function readManifest(root: string): PromaPluginManifest {
       fail('插件 mcpServers 必须是对象')
     }
     manifest.mcpServers = raw.mcpServers as Record<string, PromaPluginMcpServer>
+  }
+
+  if (raw.settings !== undefined) {
+    manifest.settings = parsePluginSettings(raw.settings)
   }
 
   return manifest
@@ -420,6 +554,7 @@ function installPluginFromRoot(
       directory: pluginDir,
       skills: skills.map((skill) => skill.slug),
       mcpServers: Object.keys(mcpServers),
+      ...(manifest.settings ? { settings: manifest.settings } : {}),
       skillFingerprints,
       mcpServerFingerprints,
     }
@@ -500,13 +635,25 @@ export function installPluginFromZip(
 
 export function listPlugins(workspaceSlug: string): InstalledPromaPlugin[] {
   assertWorkspace(workspaceSlug)
-  return (readRegistry().workspaces[workspaceSlug] ?? []).slice()
+  return (readRegistry().workspaces[workspaceSlug] ?? []).map((plugin) => {
+    try {
+      const manifest = readManifest(plugin.directory)
+      return manifest.settings ? { ...plugin, settings: manifest.settings } : plugin
+    } catch {
+      return plugin
+    }
+  })
 }
 
 export function getInstalledPlugin(workspaceSlug: string, pluginId: string): InstalledPromaPlugin {
   const plugin = (readRegistry().workspaces[workspaceSlug] ?? []).find((item) => item.id === pluginId)
   if (!plugin) fail('插件未安装: ' + pluginId)
-  return plugin
+  try {
+    const manifest = readManifest(plugin.directory)
+    return manifest.settings ? { ...plugin, settings: manifest.settings } : plugin
+  } catch {
+    return plugin
+  }
 }
 
 export function uninstallPlugin(workspaceSlug: string, pluginId: string): PluginUninstallResult {
@@ -571,6 +718,18 @@ export function createPluginTemplate(): string {
     version: '1.0.0',
     description: '示例 Proma 插件：包含一个 Skill，可按需添加 MCP 服务器。',
     skills: ['skills/hello'],
+    settings: {
+      fields: [
+        {
+          key: 'exampleValue',
+          label: '示例配置',
+          type: 'text',
+          default: '',
+          description: '插件可通过环境变量读取该值。',
+          env: 'HELLO_PLUGIN_EXAMPLE_VALUE',
+        },
+      ],
+    },
   })
   writeFileSync(
     join(dir, 'skills', 'hello', 'SKILL.md'),
@@ -614,6 +773,7 @@ export function createPluginTemplate(): string {
       '- proma-plugin.json：插件清单',
       '- skills/<slug>/SKILL.md：插件提供的 Skills',
       '- mcp.json：可选，声明 MCP 服务器',
+      '- settings：可选，在插件的「配置」对话框展示字段，并通过 env 注入 MCP 子进程',
       '',
       '把 mcp.json.example 改名为 mcp.json 即可声明 MCP。',
       'MCP 的 command / args / env / url / headers 中可以使用 $PLUGIN_DIR，安装时会替换成插件缓存目录。',

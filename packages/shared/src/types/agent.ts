@@ -1276,6 +1276,34 @@ export interface WorkspaceCapabilities {
  */
 // ===== Proma 插件 =====
 
+export type PromaPluginSettingType = 'text' | 'password' | 'number' | 'boolean' | 'select'
+
+export interface PromaPluginSettingOption {
+  label: string
+  value: string
+}
+
+export interface PromaPluginSettingField {
+  /** 配置键，扁平字符串，插件通过环境变量接收 */
+  key: string
+  label: string
+  type: PromaPluginSettingType
+  description?: string
+  placeholder?: string
+  default?: string | number | boolean
+  min?: number
+  max?: number
+  step?: number
+  options?: PromaPluginSettingOption[]
+  /** 保存后注入 MCP 子进程的环境变量名；password 字段也会通过该变量注入 */
+  env?: string
+  required?: boolean
+}
+
+export interface PromaPluginSettingsSchema {
+  fields: PromaPluginSettingField[]
+}
+
 /** Proma 插件清单（proma-plugin.json） */
 export interface PromaPluginManifest {
   id: string
@@ -1288,6 +1316,8 @@ export interface PromaPluginManifest {
   skills?: string[]
   /** 插件声明的 MCP 服务器；也支持根目录 mcp.json */
   mcpServers?: Record<string, PromaPluginMcpServer>
+  /** 插件配置界面与运行时环境变量映射 */
+  settings?: PromaPluginSettingsSchema
 }
 
 /** 插件清单中的 MCP 服务器定义，安装时会规范化为 McpServerEntry */
@@ -1318,8 +1348,24 @@ export interface InstalledPromaPlugin {
   directory: string
   skills: string[]
   mcpServers: string[]
+  /** 从插件清单读取的配置项；空表示插件没有配置界面 */
+  settings?: PromaPluginSettingsSchema
   skillFingerprints: Record<string, string>
   mcpServerFingerprints: Record<string, string>
+}
+
+export interface PromaPluginSettingsSnapshot {
+  pluginId: string
+  schema: PromaPluginSettingsSchema
+  values: Record<string, string | number | boolean>
+  /** 已保存密钥的字段 key；不会把密钥明文返回给渲染进程 */
+  configuredSecrets: string[]
+}
+
+export interface SavePromaPluginSettingsInput {
+  values: Record<string, string | number | boolean>
+  /** 要删除的密钥字段 key */
+  clearSecrets?: string[]
 }
 
 export interface PluginInstallOptions {
@@ -2035,6 +2081,10 @@ export const AGENT_IPC_CHANNELS = {
   OPEN_PLUGIN_FOLDER: 'agent:open-plugin-folder',
   /** 创建插件模板并返回目录 */
   CREATE_PLUGIN_TEMPLATE: 'agent:create-plugin-template',
+  /** 读取插件配置界面 schema 与当前值（密钥不返回明文） */
+  GET_PLUGIN_SETTINGS: 'agent:get-plugin-settings',
+  /** 保存插件配置；密钥使用系统安全存储加密 */
+  SAVE_PLUGIN_SETTINGS: 'agent:save-plugin-settings',
   /** 获取工作区记忆摘要 */
   GET_WORKSPACE_MEMORY_SUMMARY: 'agent:get-workspace-memory-summary',
   /** 读取工作区 AGENTS.md */

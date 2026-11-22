@@ -19,6 +19,7 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import { normalizeMcpTransportType } from '@proma/shared'
 import type { McpServerEntry } from '@proma/shared'
 import { getMcpApiKeyEnvironment, getMcpOAuthHeaders } from './mcp-oauth-service'
+import { getPluginSettingsEnv } from './plugin-settings'
 
 /**
  * MCP 验证结果
@@ -81,10 +82,12 @@ export async function validateMcpServer(
 
     if (type === 'stdio') {
       const credentialEnv = workspaceSlug ? getMcpApiKeyEnvironment(workspaceSlug, name, entry) : undefined
+      const pluginSettingsEnv = getPluginSettingsEnv(workspaceSlug, name)
       const env = {
         ...(process.env.PATH ? { PATH: process.env.PATH } : {}),
         ...(entry.env ?? {}),
         ...(credentialEnv ?? {}),
+        ...(pluginSettingsEnv ?? {}),
       }
       transport = new StdioClientTransport({ command: entry.command!, args: entry.args, env, stderr: 'pipe' })
     } else {

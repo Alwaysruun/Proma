@@ -1,0 +1,8 @@
+{
+  "name": "@proma/plugin-web-search",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "bun test"
+  }
+}

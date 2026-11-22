@@ -149,6 +149,8 @@ import type {
   ResolvePlanningNativeSyncConflictInput,
   PlanningSyncProfile,
   SavePlanningSyncProfileInput,
+  PromaPluginSettingsSnapshot,
+  SavePromaPluginSettingsInput,
   BrowserViewState,
   BrowserViewLayout,
   BrowserNavigateInput,
@@ -361,6 +363,7 @@ import {
   cleanupStaleWorkspaceAttachedPaths,
 } from './lib/agent-workspace-manager'
 import { createPluginTemplate, getInstalledPlugin, installPluginFromFolder, installPluginFromZip, listPlugins, uninstallPlugin } from './lib/plugin-manager'
+import { getPluginSettingsSnapshot, savePluginSettings } from './lib/plugin-settings'
 import { movePathSafely } from './lib/file-move-service'
 import { subscribeWorkspaceMemoryChanges } from './lib/workspace-memory-change-watcher'
 import { confirmWorkspaceMemoryWindowClose, markWorkspaceMemoryWindowReady } from './lib/workspace-memory-window'
@@ -3481,6 +3484,25 @@ export function registerIpcHandlers(): void {
       if (error) throw new Error('无法打开插件模板目录: ' + error)
       return directory
     }
+  )
+
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.GET_PLUGIN_SETTINGS,
+    async (_, workspaceSlug: string, pluginId: string): Promise<PromaPluginSettingsSnapshot> => {
+      return getPluginSettingsSnapshot(workspaceSlug, pluginId)
+    },
+  )
+
+  ipcMain.handle(
+    AGENT_IPC_CHANNELS.SAVE_PLUGIN_SETTINGS,
+    async (
+      _,
+      workspaceSlug: string,
+      pluginId: string,
+      input: SavePromaPluginSettingsInput,
+    ): Promise<PromaPluginSettingsSnapshot> => {
+      return savePluginSettings(workspaceSlug, pluginId, input)
+    },
   )
 
   // ===== 工作区记忆文件管理 =====

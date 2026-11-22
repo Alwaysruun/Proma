@@ -60,4 +60,57 @@ describe('Proma 插件清单', () => {
       rmSync(dir, { recursive: true, force: true })
     }
   })
+
+  test('解析插件配置 schema', () => {
+    const dir = createManifestDir({
+      id: 'my-plugin',
+      name: 'My Plugin',
+      version: '1.0.0',
+      settings: {
+        fields: [
+          {
+            key: 'provider',
+            label: 'Provider',
+            type: 'select',
+            default: 'auto',
+            options: [
+              { label: 'Auto', value: 'auto' },
+              { label: 'Bing', value: 'bing' },
+            ],
+            env: 'MY_PROVIDER',
+          },
+          {
+            key: 'apiKey',
+            label: 'API Key',
+            type: 'password',
+            env: 'MY_API_KEY',
+          },
+        ],
+      },
+    })
+    try {
+      const manifest = readManifest(dir)
+      expect(manifest.settings?.fields).toHaveLength(2)
+      expect(manifest.settings?.fields[0]?.env).toBe('MY_PROVIDER')
+      expect(manifest.settings?.fields[1]?.type).toBe('password')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  test('拒绝 password 配置项设置 default', () => {
+    const dir = createManifestDir({
+      id: 'my-plugin',
+      name: 'My Plugin',
+      version: '1.0.0',
+      settings: {
+        fields: [{ key: 'apiKey', label: 'API Key', type: 'password', default: 'secret' }],
+      },
+    })
+    try {
+      expect(() => readManifest(dir)).toThrow()
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
 })

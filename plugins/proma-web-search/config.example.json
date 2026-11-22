@@ -1,0 +1,16 @@
+{
+  "defaultProvider": "auto",
+  "timeoutMs": 30000,
+  "maxResults": 5,
+  "providers": {
+    "brave": {
+      "apiKey": ""
+    },
+    "tavily": {
+      "apiKey": ""
+    },
+    "deepseek": {
+      "apiKey": ""
+    }
+  }
+}

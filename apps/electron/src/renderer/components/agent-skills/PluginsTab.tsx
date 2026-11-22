@@ -6,10 +6,11 @@
  */
 
 import * as React from 'react'
-import { FileArchive, FolderOpen, Loader2, Package, Plus, Trash2 } from 'lucide-react'
+import { FileArchive, FolderOpen, Loader2, Package, Plus, Settings2, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import type { InstalledPromaPlugin } from '@proma/shared'
+import { PluginSettingsDialog } from './PluginSettingsDialog'
 import { usePluginsData } from './usePluginsData'
 
 const MANIFEST_EXAMPLE = [
@@ -25,6 +26,11 @@ const MANIFEST_EXAMPLE = [
   '      "command": "node",',
   '      "args": ["$PLUGIN_DIR/server/index.js"]',
   '    }',
+  '  },',
+  '  "settings": {',
+  '    "fields": [',
+  '      { "key": "apiKey", "label": "API Key", "type": "password", "env": "MY_API_KEY" }',
+  '    ]',
   '  }',
   '}',
 ].join('\n')
@@ -47,11 +53,13 @@ function formatInstalledAt(value: string): string {
 function PluginCard({
   plugin,
   busy,
+  onConfigure,
   onOpen,
   onUninstall,
 }: {
   plugin: InstalledPromaPlugin
   busy: boolean
+  onConfigure: () => void
   onOpen: () => void
   onUninstall: () => void
 }): React.ReactElement {
@@ -94,7 +102,13 @@ function PluginCard({
         </div>
       )}
 
-      <div className="mt-auto flex items-center justify-end gap-1.5">
+      <div className="mt-auto flex flex-wrap items-center justify-end gap-1.5">
+        {(plugin.settings?.fields.length ?? 0) > 0 && (
+          <Button type="button" size="sm" variant="ghost" onClick={onConfigure} disabled={busy}>
+            <Settings2 size={14} />
+            配置
+          </Button>
+        )}
         <Button type="button" size="sm" variant="ghost" onClick={onOpen} disabled={busy}>
           <FolderOpen size={14} />
           打开目录
@@ -124,6 +138,7 @@ export function PluginsTab({
 }): React.ReactElement {
   const data = usePluginsData(workspaceSlug)
   const [pendingUninstall, setPendingUninstall] = React.useState<InstalledPromaPlugin | null>(null)
+  const [settingsPlugin, setSettingsPlugin] = React.useState<InstalledPromaPlugin | null>(null)
 
   const filtered = React.useMemo(() => {
     const query = search.trim().toLowerCase()
@@ -184,6 +199,7 @@ export function PluginsTab({
               key={plugin.id}
               plugin={plugin}
               busy={data.busyAction === 'uninstall:' + plugin.id}
+              onConfigure={() => setSettingsPlugin(plugin)}
               onOpen={() => void data.openFolder(plugin)}
               onUninstall={() => setPendingUninstall(plugin)}
             />
@@ -232,6 +248,15 @@ export function PluginsTab({
           await data.uninstall(pendingUninstall)
           setPendingUninstall(null)
         }}
+      />
+
+      <PluginSettingsDialog
+        open={settingsPlugin !== null}
+        onOpenChange={(open) => { if (!open) setSettingsPlugin(null) }}
+        plugin={settingsPlugin}
+        getSettings={data.getSettings}
+        saveSettings={data.saveSettings}
+        onSaved={() => void data.refresh()}
       />
     </div>
   )

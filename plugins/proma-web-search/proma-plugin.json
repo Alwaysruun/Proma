@@ -1,0 +1,85 @@
+{
+  "id": "proma-web-search",
+  "name": "Web Search",
+  "version": "1.0.0",
+  "description": "为 Proma Agent 提供公网搜索与网页正文读取，支持 Bing 零配置搜索，以及 Brave、Tavily、DeepSeek 三种可配置搜索源。",
+  "author": "Proma",
+  "skills": ["skills/web-search"],
+  "mcpServers": {
+    "proma-web-search": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["$PLUGIN_DIR/server/index.mjs"],
+      "env": {
+        "NODE_NO_WARNINGS": "1"
+      },
+      "timeout": 60,
+      "enabled": false
+    }
+  },
+  "settings": {
+    "fields": [
+      {
+        "key": "defaultProvider",
+        "label": "默认搜索源",
+        "type": "select",
+        "default": "auto",
+        "description": "auto 会优先使用已配置 Key 的 Tavily、Brave、DeepSeek，否则使用 Bing。",
+        "env": "PROMA_WEB_SEARCH_PROVIDER",
+        "options": [
+          { "label": "自动（推荐）", "value": "auto" },
+          { "label": "Bing（免 Key）", "value": "bing" },
+          { "label": "Brave", "value": "brave" },
+          { "label": "Tavily", "value": "tavily" },
+          { "label": "DeepSeek", "value": "deepseek" }
+        ]
+      },
+      {
+        "key": "timeoutMs",
+        "label": "请求超时（毫秒）",
+        "type": "number",
+        "default": 30000,
+        "min": 5000,
+        "max": 120000,
+        "step": 1000,
+        "description": "单次搜索或网页请求的最长等待时间。",
+        "env": "PROMA_WEB_SEARCH_TIMEOUT_MS"
+      },
+      {
+        "key": "maxResults",
+        "label": "默认结果数",
+        "type": "number",
+        "default": 5,
+        "min": 1,
+        "max": 10,
+        "step": 1,
+        "description": "search_web 未显式传 limit 时返回的结果条数。",
+        "env": "PROMA_WEB_SEARCH_MAX_RESULTS"
+      },
+      {
+        "key": "braveApiKey",
+        "label": "Brave API Key",
+        "type": "password",
+        "description": "留空保持不变。保存后加密存放在系统安全存储中。",
+        "placeholder": "粘贴 Brave Search API Key",
+        "env": "BRAVE_API_KEY"
+      },
+      {
+        "key": "tavilyApiKey",
+        "label": "Tavily API Key",
+        "type": "password",
+        "description": "配置后搜索和网页正文读取优先使用 Tavily；留空保持不变。",
+        "placeholder": "粘贴 Tavily API Key",
+        "env": "TAVILY_API_KEY"
+      },
+      {
+        "key": "deepseekApiKey",
+        "label": "DeepSeek API Key",
+        "type": "password",
+        "description": "用于 DeepSeek 搜索源；留空保持不变。",
+        "placeholder": "粘贴 DeepSeek API Key",
+        "env": "DEEPSEEK_API_KEY"
+      }
+    ]
+  }
+}
